@@ -29,6 +29,8 @@ export { LEAD_SOURCES } from "./config";
 export interface Lead {
   id: string;
   name: string;
+  /** Company or individual; becomes the customer's type on conversion. */
+  lead_type: LeadType;
   company: string | null;
   email: string | null;
   phone: string | null;
@@ -49,8 +51,11 @@ export interface Lead {
   updated_at: string;
 }
 
+export type LeadType = "company" | "individual";
+
 export interface LeadInput {
   name: string;
+  lead_type?: LeadType;
   company?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -128,6 +133,7 @@ export function listActivity(leadId: string): Activity[] {
 
 const FIELDS = [
   "name",
+  "lead_type",
   "company",
   "email",
   "phone",
@@ -431,6 +437,11 @@ export function getLead(id: string): Lead | null {
 export function createLead(input: LeadInput, ctx: Context = {}): Lead {
   const id = crypto.randomBytes(16).toString("hex");
   const stage = input.stage ?? firstOpenStage();
+  // Not chosen: a company name means a company.
+  input = {
+    ...input,
+    lead_type: input.lead_type ?? (clean(input.company) ? "company" : "individual"),
+  };
   getDb().run(
     `INSERT INTO crm_leads (id, ${FIELDS.join(", ")}, events_seen)
      VALUES (?, ${FIELDS.map(() => "?").join(", ")}, '[]')`,
@@ -512,7 +523,7 @@ export function convertLead(
   const contact = lead.company ? `Contact: ${lead.name}` : "";
   const customer = createCustomer({
     name: lead.company || lead.name,
-    customer_type: lead.company ? "company" : "individual",
+    customer_type: lead.lead_type,
     email: lead.email ?? "",
     phone: lead.phone ?? "",
     notes: [contact, lead.notes ?? ""].filter(Boolean).join("\n"),

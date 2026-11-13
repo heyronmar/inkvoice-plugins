@@ -109,4 +109,21 @@ export const crmMigrations: PluginMigration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    name: "crm_lead_type",
+    up: (db) => {
+      // Company or individual, chosen when a lead comes in.
+      const has = db
+        .query("SELECT COUNT(*) AS n FROM pragma_table_info('crm_leads') WHERE name = 'lead_type'")
+        .get() as { n: number };
+      if (!has.n) {
+        db.exec("ALTER TABLE crm_leads ADD COLUMN lead_type TEXT NOT NULL DEFAULT 'company'");
+        // Existing leads without a company are people.
+        db.exec(
+          "UPDATE crm_leads SET lead_type = 'individual' WHERE company IS NULL OR trim(company) = ''",
+        );
+      }
+    },
+  },
 ];

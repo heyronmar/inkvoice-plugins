@@ -1,6 +1,7 @@
 // Add or edit a lead: contact details, source, value, stage, next follow-up
 // and notes. Used by the CRM list, the board and a lead's own page.
 
+import { Building2, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,8 @@ export function LeadDialog({
   useEffect(() => {
     if (!open) return;
     setForm({
+      // New leads start as a company, the same default as a new customer.
+      lead_type: lead?.lead_type ?? "company",
       name: lead?.name ?? "",
       company: lead?.company ?? "",
       email: lead?.email ?? "",
@@ -70,9 +73,12 @@ export function LeadDialog({
   const set = (key: string) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
 
   const save = async () => {
+    const individual = form.lead_type === "individual";
     const input: LeadInput = {
+      lead_type: individual ? "individual" : "company",
       name: form.name.trim(),
-      company: form.company,
+      // A person has no company; don't keep one typed before switching.
+      company: individual ? null : form.company,
       email: form.email.trim(),
       phone: form.phone,
       source: form.source || null,
@@ -114,8 +120,34 @@ export function LeadDialog({
           <DialogTitle>{lead ? t("crm.edit_lead") : t("crm.add_lead")}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Same control and words as the customer form, so a lead's type
+              carries straight over when it becomes a customer. */}
+          <div className="space-y-1 sm:col-span-2">
+            <Label>{t("customers.type")}</Label>
+            <div className="inline-flex h-8 w-fit items-center gap-0.5 rounded-lg border p-0.5">
+              {(
+                [
+                  ["company", Building2, t("customers.type_company")],
+                  ["individual", User, t("customers.type_individual")],
+                ] as const
+              ).map(([value, Icon, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={form.lead_type === value ? "secondary" : "ghost"}
+                  className="h-full"
+                  aria-pressed={form.lead_type === value}
+                  onClick={() => set("lead_type")(value)}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
           {text("name", t("crm.field_name"))}
-          {text("company", t("crm.field_company"))}
+          {form.lead_type !== "individual" && text("company", t("crm.field_company"))}
           {text("email", t("crm.field_email"), "email")}
           {text("phone", t("crm.field_phone"), "tel")}
           <div className="space-y-1">

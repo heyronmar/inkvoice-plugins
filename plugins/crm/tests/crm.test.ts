@@ -98,6 +98,22 @@ describe("leads service", () => {
     expect(convertLead(lead.id)!.customer_id).toBe(first.customer_id);
   });
 
+  test("lead type: chosen, or taken from the company name; carried to the customer", async () => {
+    expect(createLead({ name: "Rewi", company: "Rewi Ltd" }).lead_type).toBe("company");
+    expect(createLead({ name: "Hemi" }).lead_type).toBe("individual");
+    // Chosen explicitly: a sole trader with a trading name is still a person.
+    const sole = createLead({ name: "Kiri", company: "Kiri's Cakes", lead_type: "individual" });
+    expect(getCustomer(convertLead(sole.id)!.customer_id)!.customer_type).toBe("individual");
+    const shop = createLead({ name: "Tui", lead_type: "company" });
+    expect(getCustomer(convertLead(shop.id)!.customer_id)!.customer_type).toBe("company");
+    setPluginEnabled("crm", true);
+    const bad = await call("/leads", {
+      method: "POST",
+      body: JSON.stringify({ name: "X", lead_type: "partnership" }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
   test("a lead without a company converts to an individual", () => {
     const lead = createLead({ name: "Wiremu" });
     const { customer_id } = convertLead(lead.id)!;

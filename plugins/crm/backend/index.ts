@@ -34,6 +34,7 @@ const isoDate = z
 
 const leadSchema = z.object({
   name: z.string().trim().min(1).max(255),
+  lead_type: z.enum(["company", "individual"]).optional(),
   company: optionalText(255),
   email: z.string().email().nullable().optional().or(z.literal("")),
   phone: optionalText(50),

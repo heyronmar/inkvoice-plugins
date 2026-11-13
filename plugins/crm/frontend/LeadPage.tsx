@@ -3,12 +3,15 @@
 //  - header: who it is, its stage, and what to do next (quote, customer…)
 //  - main column: details, notes, activity history
 //  - side column: pipeline position, next follow-up, linked records
+// The stage pill in the header moves the lead (click it, pick a stage).
 // New sections slot into one of the two columns as their own components.
 
 import {
   ArrowLeft,
   ArrowRight,
   CalendarClock,
+  Check,
+  ChevronDown,
   Clock,
   FilePlus,
   FileText,
@@ -28,21 +31,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Hint, TooltipProvider } from "@/components/ui/tooltip";
 import { useCan } from "@/hooks/use-can";
 import { useTranslation } from "@/i18n";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/settings.store";
 import { type Activity, type CrmConfig, crmApi, isClosed, type Lead } from "./api";
-import { stageStyle, useCrmConfig, useLeadLabels } from "./config";
+import { STAGE_SWATCHES, stageStyle, useCrmConfig, useLeadLabels } from "./config";
+
+const stageColor = (config: CrmConfig, id: string) =>
+  config.stages.find((s) => s.id === id)?.color ?? "slate";
+
 import { LeadDialog } from "./LeadDialog";
+import { LeadTypeIcon } from "./LeadTypeIcon";
 
 function localToday(): string {
   const d = new Date();
@@ -126,8 +128,15 @@ export default function LeadPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
+              <LeadTypeIcon type={lead.lead_type} className="h-5 w-5" />
               <h1 className="text-2xl font-bold tracking-tight">{lead.name}</h1>
-              <Badge className={stageStyle(config, lead.stage)}>{stageLabel(lead.stage)}</Badge>
+              <StagePill
+                config={config}
+                stage={lead.stage}
+                stages={stages}
+                editable={canEdit}
+                onMove={(stage) => run(() => crmApi.update(lead.id, { stage }))}
+              />
               {overdue && <Badge variant="destructive">{t("crm.overdue")}</Badge>}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
@@ -192,8 +201,17 @@ export default function LeadPage() {
           <div className="space-y-4 lg:col-span-2">
             <Section title={t("crm.section_details")}>
               <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                <Field label={t("customers.type")}>
+                  {t(
+                    lead.lead_type === "individual"
+                      ? "customers.type_individual"
+                      : "customers.type_company",
+                  )}
+                </Field>
                 <Field label={t("crm.field_name")}>{lead.name}</Field>
-                <Field label={t("crm.field_company")}>{lead.company}</Field>
+                {lead.lead_type !== "individual" && (
+                  <Field label={t("crm.field_company")}>{lead.company}</Field>
+                )}
                 <Field label={t("crm.field_email")}>
                   {lead.email && (
                     <a className="text-primary hover:underline" href={`mailto:${lead.email}`}>
@@ -236,28 +254,6 @@ export default function LeadPage() {
           {/* Side column */}
           <div className="space-y-4">
             <Section title={t("crm.section_pipeline")}>
-              {canEdit && (
-                <Select
-                  value={lead.stage}
-                  onValueChange={(v) =>
-                    v && v !== lead.stage && run(() => crmApi.update(lead.id, { stage: v }))
-                  }
-                >
-                  <SelectTrigger
-                    className={cn("w-full font-medium", stageStyle(config, lead.stage))}
-                    aria-label={t("crm.field_stage")}
-                  >
-                    <SelectValue>{stageLabel(lead.stage)}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stages.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {stageLabel(s)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
               <ol className="space-y-1.5">
                 {stages.map((s, i) => {
                   const at = stages.indexOf(lead.stage);
@@ -359,6 +355,71 @@ export default function LeadPage() {
         />
       </div>
     </TooltipProvider>
+  );
+}
+
+/**
+ * The lead's stage as a pill. Click it to move the lead to another stage;
+ * the move runs that stage's automations, like dragging it on the board.
+ */
+function StagePill({
+  config,
+  stage,
+  stages,
+  editable,
+  onMove,
+}: {
+  config: CrmConfig;
+  stage: string;
+  stages: string[];
+  editable: boolean;
+  onMove: (stage: string) => void;
+}) {
+  const { t } = useTranslation();
+  const { stageLabel } = useLeadLabels(config);
+  const [open, setOpen] = useState(false);
+  const pill = cn(
+    "inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium",
+    stageStyle(config, stage),
+  );
+  if (!editable) return <span className={pill}>{stageLabel(stage)}</span>;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Hint label={t("crm.move_stage")}>
+        <PopoverTrigger
+          render={
+            <button
+              type="button"
+              className={cn(pill, "cursor-pointer hover:ring-2 hover:ring-ring/30")}
+              aria-label={`${t("crm.move_stage")}: ${stageLabel(stage)}`}
+            />
+          }
+        >
+          {stageLabel(stage)}
+          <ChevronDown className="h-3 w-3 opacity-70" />
+        </PopoverTrigger>
+      </Hint>
+      <PopoverContent className="w-56 p-1" align="start">
+        <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("crm.move_stage")}</p>
+        {stages.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+            onClick={() => {
+              setOpen(false);
+              if (s !== stage) onMove(s);
+            }}
+          >
+            <span
+              className={cn("h-2 w-2 shrink-0 rounded-full", STAGE_SWATCHES[stageColor(config, s)])}
+            />
+            <span className="flex-1">{stageLabel(s)}</span>
+            {s === stage && <Check className="h-4 w-4 text-primary" />}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }
 

@@ -63,6 +63,7 @@ export interface CrmConfig {
 export interface Lead {
   id: string;
   name: string;
+  lead_type: "company" | "individual";
   company: string | null;
   email: string | null;
   phone: string | null;
@@ -115,6 +116,7 @@ export type LeadInput = Partial<
   Pick<
     Lead,
     | "name"
+    | "lead_type"
     | "company"
     | "email"
     | "phone"

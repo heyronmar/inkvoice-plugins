@@ -57,6 +57,7 @@ import { useSettingsStore } from "@/stores/settings.store";
 import { type CrmConfig, crmApi, isClosed, type Lead } from "./api";
 import { automationCount, stageStyle, useCrmConfig, useLeadLabels } from "./config";
 import { LeadDialog } from "./LeadDialog";
+import { LeadTypeIcon } from "./LeadTypeIcon";
 import { StageAutomationsDialog } from "./StageAutomations";
 
 function todayIso(): string {
@@ -380,7 +381,10 @@ export default function CrmPage() {
                     onClick={() => openLead(l)}
                   >
                     <TableCell>
-                      <div className="font-medium">{l.name}</div>
+                      <div className="flex items-center gap-1.5 font-medium">
+                        <LeadTypeIcon type={l.lead_type} />
+                        {l.name}
+                      </div>
                       {l.company && (
                         <div className="text-xs text-muted-foreground">{l.company}</div>
                       )}
@@ -515,7 +519,10 @@ function LeadBoard({
     <>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-medium truncate">{l.name}</div>
+          <div className="flex items-center gap-1.5 font-medium">
+            <LeadTypeIcon type={l.lead_type} />
+            <span className="truncate">{l.name}</span>
+          </div>
           {l.company && <div className="text-xs text-muted-foreground truncate">{l.company}</div>}
           {quoteChip(l)}
         </div>
