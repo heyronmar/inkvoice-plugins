@@ -7,6 +7,7 @@
 import {
   DndContext,
   type DragEndEvent,
+  DragOverlay,
   PointerSensor,
   useDraggable,
   useDroppable,
@@ -28,7 +29,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
@@ -665,9 +666,52 @@ function LeadBoard({
     if (lead && target && target !== lead.stage) onMove(lead, target);
   };
 
+  const height = useFillHeight<HTMLDivElement>();
+  // The card being dragged is drawn in an overlay, so it isn't clipped by its
+  // column's scroll area while it moves to another column.
+  const [dragging, setDragging] = useState<Lead | null>(null);
+
+  const cardBody = (l: Lead) => (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-medium truncate">{l.name}</div>
+          {l.company && <div className="text-xs text-muted-foreground truncate">{l.company}</div>}
+          {quoteChip(l)}
+        </div>
+        {l.value != null && (
+          <div className="text-sm tabular-nums shrink-0">{formatCurrency(l.value, currency)}</div>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+        <div className="text-muted-foreground">{followUp(l)}</div>
+        <div
+          className="flex gap-0.5"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {renderActions(l, true)}
+        </div>
+      </div>
+    </>
+  );
+
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="grid grid-flow-col auto-cols-[minmax(15rem,1fr)] gap-3 overflow-x-auto pb-2">
+    <DndContext
+      sensors={sensors}
+      onDragStart={({ active }) => setDragging(leads.find((l) => l.id === active.id) ?? null)}
+      onDragEnd={(e) => {
+        setDragging(null);
+        handleDragEnd(e);
+      }}
+      onDragCancel={() => setDragging(null)}
+    >
+      {/* Fills the window below the toolbar; each column scrolls on its own. */}
+      <div
+        ref={height.ref}
+        style={{ height: height.value }}
+        className="grid min-h-[24rem] grid-flow-col auto-cols-[minmax(15rem,1fr)] gap-3 overflow-x-auto pb-2"
+      >
         {stages.map((stage) => {
           const items = leads.filter((l) => l.stage === stage);
           const sum = items.reduce((a, l) => a + (l.value ?? 0), 0);
@@ -684,36 +728,20 @@ function LeadBoard({
             >
               {items.map((l) => (
                 <BoardCard key={l.id} lead={l} draggable={canEdit} onOpen={() => onOpen(l)}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{l.name}</div>
-                      {l.company && (
-                        <div className="text-xs text-muted-foreground truncate">{l.company}</div>
-                      )}
-                      {quoteChip(l)}
-                    </div>
-                    {l.value != null && (
-                      <div className="text-sm tabular-nums shrink-0">
-                        {formatCurrency(l.value, currency)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-                    <div className="text-muted-foreground">{followUp(l)}</div>
-                    <div
-                      className="flex gap-0.5"
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      {renderActions(l, true)}
-                    </div>
-                  </div>
+                  {cardBody(l)}
                 </BoardCard>
               ))}
             </BoardColumn>
           );
         })}
       </div>
+      <DragOverlay>
+        {dragging && (
+          <div className="cursor-grabbing rounded-lg border border-border bg-background p-3 text-sm shadow-lg">
+            {cardBody(dragging)}
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
@@ -743,7 +771,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-[24rem] flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition-colors",
+        "flex min-h-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition-colors",
         isOver && "border-primary/50 bg-primary/5",
       )}
     >
@@ -773,9 +801,39 @@ function BoardColumn({
           )}
         </div>
       </div>
-      {children}
+      <div className="-mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-1">{children}</div>
     </div>
   );
+}
+
+/** Space kept below the board: a small gap plus the main area's own bottom padding. */
+const PAGE_BOTTOM_GAP = 32;
+
+/**
+ * Height from the element's top edge to the bottom of the window, so the
+ * board always fills the screen. Measured again on resize and when content
+ * above it (toolbar wrapping, banners) moves it.
+ */
+function useFillHeight<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [value, setValue] = useState<number>();
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + (el.closest("main")?.scrollTop ?? 0);
+      setValue(Math.max(0, Math.floor(window.innerHeight - top - PAGE_BOTTOM_GAP)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = new ResizeObserver(measure);
+    if (el.parentElement) observer.observe(el.parentElement);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer.disconnect();
+    };
+  }, []);
+  return { ref, value };
 }
 
 function BoardCard({
@@ -789,7 +847,7 @@ function BoardCard({
   onOpen: () => void;
   children: ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
     disabled: !draggable,
   });
@@ -802,11 +860,11 @@ function BoardCard({
       onKeyDown={(e) => {
         if (e.key === "Enter") onOpen();
       }}
-      style={transform ? { transform: `translate(${transform.x}px, ${transform.y}px)` } : undefined}
       className={cn(
         "rounded-lg border border-border bg-background p-3 text-sm shadow-xs",
         draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
-        isDragging && "relative z-10 shadow-lg opacity-90",
+        // The overlay shows the moving card; this one marks where it came from.
+        isDragging && "opacity-40",
         lead.stage === "lost" && "opacity-60",
       )}
     >
