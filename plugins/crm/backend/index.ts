@@ -82,9 +82,11 @@ const todaySchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .optional();
 
-function ctxFrom(today: string | undefined): svc.Context {
+/** The user's local date and who's acting, for follow-ups and the activity history. */
+function ctxFrom(c: { get: (key: "user") => unknown }, today: unknown): svc.Context {
   const parsed = todaySchema.safeParse(today);
-  return { today: parsed.success ? parsed.data : undefined };
+  const user = c.get("user") as { sub?: string } | undefined;
+  return { today: parsed.success ? parsed.data : undefined, userId: user?.sub };
 }
 
 // Everyone who can see leads needs the stage names and sources; only admins
@@ -124,14 +126,14 @@ function filtersFrom(c: { req: { query: (k: string) => string | undefined } }) {
 routes.get("/leads", requirePermission("customers", "read"), (c) => {
   const filters = filtersFrom(c);
   const { stage: _stage, ...countFilters } = filters;
-  const items = svc.listLeads(filters, ctxFrom(c.req.query("today")));
+  const items = svc.listLeads(filters, ctxFrom(c, c.req.query("today")));
   return c.json(ok({ items, counts: svc.countByStage(countFilters) }));
 });
 
 routes.get("/leads/export", requirePermission("customers", "export"), (c) => {
   const config = getCrmConfig();
   const rows = svc
-    .listLeads(filtersFrom(c), ctxFrom(c.req.query("today")))
+    .listLeads(filtersFrom(c), ctxFrom(c, c.req.query("today")))
     .map((l) => ({ ...l, stage: stageName(config, l.stage) }));
   const csv = buildCsv(rows, [
     { header: "Name", key: "name" },
@@ -157,13 +159,20 @@ routes.get("/leads/:id", requirePermission("customers", "read"), (c) => {
 
 const unknownStage = (stage: string | undefined) => stage !== undefined && !svc.stageExists(stage);
 
+routes.get("/leads/:id/activity", requirePermission("customers", "read"), (c) => {
+  if (!svc.getLead(c.req.param("id"))) {
+    return c.json({ success: false, error: "Lead not found" }, 404);
+  }
+  return c.json(ok(svc.listActivity(c.req.param("id"))));
+});
+
 routes.post("/leads", requirePermission("customers", "create"), async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = leadSchema.safeParse(body);
   if (!parsed.success || unknownStage(parsed.data.stage)) {
     return c.json({ success: false, error: "Invalid lead" }, 400);
   }
-  return c.json(ok(svc.createLead(parsed.data as svc.LeadInput, ctxFrom(body?.today))), 201);
+  return c.json(ok(svc.createLead(parsed.data as svc.LeadInput, ctxFrom(c, body?.today))), 201);
 });
 
 routes.put("/leads/:id", requirePermission("customers", "update"), async (c) => {
@@ -175,7 +184,7 @@ routes.put("/leads/:id", requirePermission("customers", "update"), async (c) => 
   const updated = svc.updateLead(
     c.req.param("id"),
     parsed.data as Partial<svc.LeadInput>,
-    ctxFrom(body?.today),
+    ctxFrom(c, body?.today),
   );
   if (!updated) return c.json({ success: false, error: "Lead not found" }, 404);
   return c.json(ok(updated));
@@ -189,7 +198,7 @@ routes.delete("/leads/:id", requirePermission("customers", "delete"), (c) => {
 });
 
 routes.post("/leads/:id/convert", requirePermission("customers", "create"), (c) => {
-  const result = svc.convertLead(c.req.param("id"));
+  const result = svc.convertLead(c.req.param("id"), ctxFrom(c, undefined));
   if (!result) return c.json({ success: false, error: "Lead not found" }, 404);
   return c.json(ok(result));
 });
@@ -199,7 +208,7 @@ routes.post(
   requirePermission("customers", "create"),
   requirePermission("invoices", "create"),
   (c) => {
-    const result = svc.startQuote(c.req.param("id"));
+    const result = svc.startQuote(c.req.param("id"), ctxFrom(c, undefined));
     if (!result) return c.json({ success: false, error: "Lead not found" }, 404);
     return c.json(ok(result));
   },

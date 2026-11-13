@@ -21,6 +21,7 @@ import {
   createLead,
   deleteLead,
   getLead,
+  listActivity,
   listLeads,
   startQuote,
   updateLead,
@@ -513,5 +514,46 @@ describe("upgrade from Leads", () => {
     expect(setting("leads_settings")).toBeUndefined();
     expect(JSON.parse(setting("enabled_plugins")!)).toEqual(["time-tracker", "crm"]);
     expect(db.query("SELECT * FROM plugin_schema_migrations").all()).toEqual([]);
+  });
+});
+
+describe("activity history", () => {
+  test("records who did what, and which event moved a lead", async () => {
+    saveCrmConfig(defaultCrmConfig());
+    const admin = getDb().query("SELECT id FROM users WHERE username = 'admin'").get() as {
+      id: string;
+    };
+    const ctx = { userId: admin.id };
+    const lead = createLead({ name: "Wiremu" }, ctx);
+    updateLead(lead.id, { stage: "contacted", next_follow_up: "2030-03-01" }, ctx);
+    const { customer_id } = startQuote(lead.id, ctx)!;
+    quoteFor(customer_id);
+    listLeads();
+
+    const history = listActivity(lead.id);
+    expect(history.map((a) => a.kind)).toEqual([
+      "stage_changed",
+      "quote_linked",
+      "converted",
+      "stage_changed",
+      "follow_up_set",
+      "created",
+    ]);
+    // Newest first: the quote moved it to Quoted, with no user.
+    expect(history[0]).toMatchObject({
+      data: { from: "contacted", to: "quoted", event: "quote_created" },
+      user_id: null,
+    });
+    expect(history[3]).toMatchObject({
+      data: { from: "new", to: "contacted" },
+      user_name: "admin",
+    });
+
+    const res = await call(`/leads/${lead.id}/activity`);
+    expect(((await res.json()) as any).data).toHaveLength(6);
+    expect((await call("/leads/nope/activity")).status).toBe(404);
+
+    deleteLead(lead.id);
+    expect(listActivity(lead.id)).toEqual([]);
   });
 });

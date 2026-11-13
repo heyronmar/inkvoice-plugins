@@ -71,6 +71,59 @@ export interface LeadFilters {
 /** The user's local date (YYYY-MM-DD) for follow-up actions; the server's UTC date if not given. */
 export interface Context {
   today?: string;
+  /** Who made the change, for the activity history; absent for automations. */
+  userId?: string;
+}
+
+// ── Activity history ────────────────────────────────────────────────────────
+
+/** What can appear in a lead's history. `data` holds the details for each kind. */
+export type ActivityKind =
+  | "created"
+  | "stage_changed"
+  | "follow_up_set"
+  | "converted"
+  | "quote_linked"
+  | "project_created";
+
+export interface Activity {
+  id: string;
+  lead_id: string;
+  kind: ActivityKind;
+  data: Record<string, unknown>;
+  user_id: string | null;
+  user_name: string | null;
+  created_at: string;
+}
+
+function logActivity(
+  leadId: string,
+  kind: ActivityKind,
+  data: Record<string, unknown>,
+  userId?: string,
+): void {
+  getDb().run(
+    "INSERT INTO crm_lead_activity (id, lead_id, kind, data, user_id) VALUES (?, ?, ?, ?, ?)",
+    [crypto.randomBytes(16).toString("hex"), leadId, kind, JSON.stringify(data), userId ?? null],
+  );
+}
+
+/** A lead's history, newest first. */
+export function listActivity(leadId: string): Activity[] {
+  const rows = getDb()
+    .query(
+      `SELECT a.*, COALESCE(u.display_name, u.username) AS user_name
+         FROM crm_lead_activity a LEFT JOIN users u ON u.id = a.user_id
+        WHERE a.lead_id = ? ORDER BY a.created_at DESC, a.rowid DESC`,
+    )
+    .all(leadId) as (Omit<Activity, "data"> & { data: string | null })[];
+  return rows.map((r) => {
+    let data: Record<string, unknown> = {};
+    try {
+      data = r.data ? JSON.parse(r.data) : {};
+    } catch {}
+    return { ...r, data };
+  });
 }
 
 const FIELDS = [
@@ -131,41 +184,53 @@ function arrive(id: string, stageId: string, ctx: Context, followUpGiven: boolea
   const stage = getStage(getCrmConfig(), stageId);
   if (!stage) return;
   const { make_customer, follow_up_days, create_project } = stage.actions;
-  if (make_customer) convertLead(id);
-  if (create_project) ensureProject(id);
+  if (make_customer) convertLead(id, ctx);
+  if (create_project) ensureProject(id, ctx);
   if (follow_up_days && !followUpGiven) {
-    getDb().run("UPDATE crm_leads SET next_follow_up = ? WHERE id = ?", [
-      addDays(ctx.today ?? todayIso(), follow_up_days),
-      id,
-    ]);
+    const date = addDays(ctx.today ?? todayIso(), follow_up_days);
+    getDb().run("UPDATE crm_leads SET next_follow_up = ? WHERE id = ?", [date, id]);
+    logActivity(id, "follow_up_set", { date, automatic: true });
   }
 }
 
-function moveLead(id: string, stage: string, ctx: Context, followUpGiven = false): void {
+/** An automation moving a lead: `event` is what triggered it. */
+function moveLead(
+  id: string,
+  stage: string,
+  event: LeadEvent,
+  ctx: Context,
+  followUpGiven = false,
+): void {
+  const from = (
+    getDb().query("SELECT stage FROM crm_leads WHERE id = ?").get(id) as { stage: string } | null
+  )?.stage;
   getDb().run("UPDATE crm_leads SET stage = ?, updated_at = datetime('now') WHERE id = ?", [
     stage,
     id,
   ]);
-  arrive(id, stage, ctx, followUpGiven);
+  logActivity(id, "stage_changed", { from, to: stage, event });
+  // Arrival actions after an automatic move aren't anyone's doing either.
+  arrive(id, stage, { today: ctx.today }, followUpGiven);
 }
 
 /**
  * A Time Tracking project for the lead's customer, named after the company,
  * made once per lead and only while Time Tracking is switched on.
  */
-function ensureProject(id: string): void {
+function ensureProject(id: string, ctx: Context = {}): void {
   if (!isPluginEnabled("time-tracker")) return;
   const lead = getLead(id);
   if (!lead) return;
   // Through Time Tracking's own service, not its tables.
   if (lead.project_id && getProject(lead.project_id)) return;
-  const converted = convertLead(id);
+  const converted = convertLead(id, ctx);
   if (!converted) return;
   const project = createProject({
     name: lead.company || lead.name,
     customer_id: converted.customer_id,
   });
   getDb().run("UPDATE crm_leads SET project_id = ? WHERE id = ?", [project.id, id]);
+  logActivity(id, "project_created", { project_id: project.id, name: project.name }, ctx.userId);
 }
 
 // ── Quote events ────────────────────────────────────────────────────────────
@@ -276,6 +341,7 @@ export function syncLeads(ctx: Context = {}): void {
 
     const quoteId = quote?.id ?? null;
     let target: string | undefined;
+    let trigger: LeadEvent | undefined;
     if (seen === null) {
       // Leads from before automations were tracked: take today's state as the
       // starting point without moving anything.
@@ -284,7 +350,10 @@ export function syncLeads(ctx: Context = {}): void {
       for (const e of events) {
         if (seen.includes(e)) continue;
         seen.push(e);
-        target = config.triggers[e] ?? target;
+        if (config.triggers[e]) {
+          target = config.triggers[e];
+          trigger = e;
+        }
       }
     }
 
@@ -295,9 +364,11 @@ export function syncLeads(ctx: Context = {}): void {
         seenJson,
         lead.id,
       ]);
+      if (quoteId && quoteId !== lead.quote_id)
+        logActivity(lead.id, "quote_linked", { quote_id: quoteId });
     }
-    if (target && target !== lead.stage && stageExists(target, config)) {
-      moveLead(lead.id, target, ctx);
+    if (target && trigger && target !== lead.stage && stageExists(target, config)) {
+      moveLead(lead.id, target, trigger, ctx);
     }
   }
 }
@@ -365,6 +436,7 @@ export function createLead(input: LeadInput, ctx: Context = {}): Lead {
      VALUES (?, ${FIELDS.map(() => "?").join(", ")}, '[]')`,
     [id, ...FIELDS.map((f) => (f === "stage" ? stage : clean(input[f])))],
   );
+  logActivity(id, "created", { stage }, ctx.userId);
   arrive(id, stage, ctx, Boolean(clean(input.next_follow_up)));
   return getLead(id)!;
 }
@@ -387,7 +459,11 @@ export function updateLead(id: string, input: Partial<LeadInput>, ctx: Context =
     );
   }
 
+  if (followUpChanged && followUp) {
+    logActivity(id, "follow_up_set", { date: followUp }, ctx.userId);
+  }
   if (stageChanged) {
+    logActivity(id, "stage_changed", { from: existing.stage, to: input.stage }, ctx.userId);
     // A stage picked by hand wins over the follow-up event in the same change.
     arrive(id, input.stage!, ctx, followUpChanged);
   } else if (followUpChanged && followUp && !isClosed(existing.stage)) {
@@ -410,10 +486,13 @@ function followUpEvent(id: string, ctx: Context): void {
     id,
   ]);
   const target = getCrmConfig().triggers.follow_up_set;
-  if (target && target !== row.stage && stageExists(target)) moveLead(id, target, ctx, true);
+  if (target && target !== row.stage && stageExists(target)) {
+    moveLead(id, target, "follow_up_set", ctx, true);
+  }
 }
 
 export function deleteLead(id: string): boolean {
+  getDb().run("DELETE FROM crm_lead_activity WHERE lead_id = ?", [id]);
   return getDb().run("DELETE FROM crm_leads WHERE id = ?", [id]).changes > 0;
 }
 
@@ -421,7 +500,10 @@ export function deleteLead(id: string): boolean {
  * Make the lead a customer (or reuse the one it already became). The customer
  * is named after the company when there is one, otherwise the person.
  */
-export function convertLead(id: string): { lead: Lead; customer_id: string } | null {
+export function convertLead(
+  id: string,
+  ctx: Context = {},
+): { lead: Lead; customer_id: string } | null {
   const lead = getLead(id);
   if (!lead) return null;
   if (lead.customer_id && getCustomer(lead.customer_id)) {
@@ -440,6 +522,7 @@ export function convertLead(id: string): { lead: Lead; customer_id: string } | n
       WHERE id = ?`,
     [customer.id, id],
   );
+  logActivity(id, "converted", { customer_id: customer.id, name: customer.name }, ctx.userId);
   return { lead: getLead(id)!, customer_id: customer.id };
 }
 
@@ -447,6 +530,9 @@ export function convertLead(id: string): { lead: Lead; customer_id: string } | n
  * Get a lead ready for its quote: make it a customer if needed. The lead moves
  * (by the quote_created trigger) once the quote is actually saved, not before.
  */
-export function startQuote(id: string): { lead: Lead; customer_id: string } | null {
-  return convertLead(id);
+export function startQuote(
+  id: string,
+  ctx: Context = {},
+): { lead: Lead; customer_id: string } | null {
+  return convertLead(id, ctx);
 }

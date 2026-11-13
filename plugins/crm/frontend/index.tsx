@@ -9,6 +9,7 @@ import { registerRoute } from "@/route-registry";
 import "./i18n";
 import CrmPage from "./CrmPage";
 import CrmSettings from "./CrmSettings";
+import LeadPage from "./LeadPage";
 
 const PLUGIN_ID = "crm";
 
@@ -17,6 +18,16 @@ registerRoute({
   element: (
     <PluginGuard pluginId={PLUGIN_ID}>
       <CrmPage />
+    </PluginGuard>
+  ),
+  scope: "protected",
+});
+
+registerRoute({
+  path: "/crm/leads/:id",
+  element: (
+    <PluginGuard pluginId={PLUGIN_ID}>
+      <LeadPage />
     </PluginGuard>
   ),
   scope: "protected",

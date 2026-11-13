@@ -82,6 +82,35 @@ export interface Lead {
   updated_at: string;
 }
 
+/** One entry in a lead's history; `data` depends on `kind`. */
+export interface Activity {
+  id: string;
+  lead_id: string;
+  kind:
+    | "created"
+    | "stage_changed"
+    | "follow_up_set"
+    | "converted"
+    | "quote_linked"
+    | "project_created";
+  data: {
+    stage?: string;
+    from?: string;
+    to?: string;
+    /** The automation event that moved the lead; absent for a manual move. */
+    event?: LeadEvent;
+    date?: string;
+    automatic?: boolean;
+    customer_id?: string;
+    quote_id?: string;
+    project_id?: string;
+    name?: string;
+  };
+  user_id: string | null;
+  user_name: string | null;
+  created_at: string;
+}
+
 export type LeadInput = Partial<
   Pick<
     Lead,
@@ -134,6 +163,8 @@ export const crmApi = {
       method: "PUT",
       body: JSON.stringify({ ...input, today: localToday() }),
     }),
+  get: (id: string) => pluginFetch<{ data: Lead }>(`${BASE}/leads/${id}`),
+  activity: (id: string) => pluginFetch<{ data: Activity[] }>(`${BASE}/leads/${id}/activity`),
   remove: (id: string) => pluginFetch(`${BASE}/leads/${id}`, { method: "DELETE" }),
   convert: (id: string) =>
     pluginFetch<{ data: { lead: Lead; customer_id: string } }>(`${BASE}/leads/${id}/convert`, {

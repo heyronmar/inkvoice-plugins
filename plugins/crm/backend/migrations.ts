@@ -83,4 +83,30 @@ export const crmMigrations: PluginMigration[] = [
       db.run("DELETE FROM plugin_schema_migrations WHERE plugin_id = 'leads'");
     },
   },
+  {
+    version: 2,
+    name: "crm_lead_activity",
+    up: (db) => {
+      // Each lead's history: created, stage moves (by whom, or which event),
+      // follow-ups, conversion, quote and project. Room for richer entries.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS crm_lead_activity (
+          id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+          lead_id TEXT NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          data TEXT,
+          user_id TEXT,
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_crm_lead_activity_lead
+          ON crm_lead_activity(lead_id, created_at);
+      `);
+      // Existing leads start their history with when they were added.
+      db.exec(`
+        INSERT INTO crm_lead_activity (lead_id, kind, data, created_at)
+        SELECT id, 'created', json_object('stage', stage), created_at FROM crm_leads
+         WHERE id NOT IN (SELECT lead_id FROM crm_lead_activity WHERE kind = 'created');
+      `);
+    },
+  },
 ];
