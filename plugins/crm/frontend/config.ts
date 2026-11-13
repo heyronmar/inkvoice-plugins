@@ -1,8 +1,9 @@
 // CRM settings on the client: the stages (order, names, colours, automations)
 // and the source list, shared by the Leads page, the board and the settings panel.
 
-import { useCallback, useEffect, useState } from "react";
-import { useTranslation } from "@/i18n";
+import { useEffect } from "react";
+import { create } from "zustand";
+import { type TFunction, useTranslation } from "@/i18n";
 import {
   type CrmConfig,
   crmApi,
@@ -16,6 +17,7 @@ import {
 const noActions = () => ({ make_customer: false, follow_up_days: null, create_project: false });
 
 export const DEFAULT_CONFIG: CrmConfig = {
+  term: { one: null, many: null },
   stages: (
     [
       ["new", "sky"],
@@ -154,26 +156,55 @@ export function newStageId(): string {
   return `c_${Math.random().toString(36).slice(2, 10).padEnd(6, "0")}`;
 }
 
-export function useCrmConfig() {
-  const [config, setConfig] = useState<CrmConfig>(DEFAULT_CONFIG);
-  const [loaded, setLoaded] = useState(false);
-
-  const reload = useCallback(async () => {
+/**
+ * CRM settings, loaded once and shared by every CRM screen (list, board,
+ * lead page, settings, dialogs), so a change shows everywhere at once.
+ */
+const useCrmConfigStore = create<{
+  config: CrmConfig;
+  loaded: boolean;
+  setConfig: (config: CrmConfig) => void;
+  reload: () => Promise<void>;
+}>((set) => ({
+  config: DEFAULT_CONFIG,
+  loaded: false,
+  setConfig: (config) => set({ config }),
+  reload: async () => {
     try {
       const res = await crmApi.getSettings();
-      setConfig(res.data);
+      set({ config: res.data });
     } catch {
       // Keep the defaults; the page still works without saved settings.
     } finally {
-      setLoaded(true);
+      set({ loaded: true });
     }
-  }, []);
+  },
+}));
 
+export function useCrmConfig() {
+  const store = useCrmConfigStore();
   useEffect(() => {
-    reload();
-  }, [reload]);
+    if (!useCrmConfigStore.getState().loaded) store.reload();
+    // Load once; later changes come through setConfig.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  }, []);
+  return store;
+}
 
-  return { config, setConfig, loaded, reload };
+const capital = (s: string) => s.charAt(0).toLocaleUpperCase() + s.slice(1);
+
+/**
+ * The app's translate function with the business's word for leads filled in:
+ * strings use {{item}}, {{items}}, {{Item}} and {{Items}}.
+ */
+export function useCrmTranslation() {
+  const i18n = useTranslation();
+  const term = useCrmConfigStore((s) => s.config.term);
+  const one = term?.one || i18n.t("crm.term_one");
+  const many = term?.many || i18n.t("crm.term_many");
+  const words = { item: one, items: many, Item: capital(one), Items: capital(many) };
+  const t: TFunction = (key, params) => i18n.t(key, { ...words, ...params });
+  return { ...i18n, t };
 }
 
 /** Labels for stages and sources, honouring custom stage names. */

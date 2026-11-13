@@ -13,10 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useTranslation } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { CrmConfig, Lead, LeadInput } from "./api";
-import { useLeadLabels } from "./config";
+import { useCrmTranslation, useLeadLabels } from "./config";
 
 export type LeadField =
   | "lead_type"
@@ -105,7 +104,7 @@ export function LeadFields({
   /** When the card's title already names the field; labels stay for screen readers. */
   hideLabels?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const { stageLabel, sourceLabel } = useLeadLabels(config);
   const set = (key: LeadField) => (value: string) => onChange({ ...form, [key]: value });
   const show = (f: LeadField) => fields.includes(f);

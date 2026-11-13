@@ -55,7 +55,14 @@ export interface StageSetting {
   actions: StageActions;
 }
 
+/** What the business calls its leads (deal, project, job…); null uses the default word. */
+export interface CrmTerm {
+  one: string | null;
+  many: string | null;
+}
+
 export interface CrmConfig {
+  term: CrmTerm;
   stages: StageSetting[];
   sources: string[];
   /** Which stage each event moves a lead to; an event belongs to one stage at most. */

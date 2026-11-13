@@ -51,6 +51,9 @@ const leadSchema = z.object({
 });
 
 const configSchema = z.object({
+  term: z
+    .object({ one: z.string().max(30).nullable(), many: z.string().max(30).nullable() })
+    .default({ one: null, many: null }),
   stages: z
     .array(
       z.object({

@@ -321,6 +321,12 @@ describe("leads settings", () => {
     expect(Object.values(config.triggers)).not.toContain("contacted");
   });
 
+  test("the business's own word for leads is kept, trimmed; blank means the default", () => {
+    const config = saveCrmConfig({ ...defaultCrmConfig(), term: { one: " job ", many: "" } });
+    expect(config.term).toEqual({ one: "job", many: null });
+    expect(saveCrmConfig(defaultCrmConfig()).term).toEqual({ one: null, many: null });
+  });
+
   test("contradicting rules are dropped", () => {
     const config = configure((c) => {
       c.triggers = {

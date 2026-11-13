@@ -50,12 +50,17 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Hint, TooltipProvider } from "@/components/ui/tooltip";
 import { useCan } from "@/hooks/use-can";
 import { usePersistentState } from "@/hooks/use-persistent-state";
-import { useTranslation } from "@/i18n";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth.store";
 import { useSettingsStore } from "@/stores/settings.store";
 import { type CrmConfig, crmApi, isClosed, type Lead } from "./api";
-import { automationCount, stageStyle, useCrmConfig, useLeadLabels } from "./config";
+import {
+  automationCount,
+  stageStyle,
+  useCrmConfig,
+  useCrmTranslation,
+  useLeadLabels,
+} from "./config";
 import { LeadDialog } from "./LeadDialog";
 import { LeadTypeIcon } from "./LeadTypeIcon";
 import { StageAutomationsDialog } from "./StageAutomations";
@@ -66,7 +71,7 @@ function todayIso(): string {
 }
 
 export default function CrmPage() {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const navigate = useNavigate();
   const can = useCan();
   const canCreate = can("customers", "create");
@@ -612,7 +617,7 @@ function BoardColumn({
   onAutomate?: () => void;
   children: ReactNode;
 }) {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   return (
     <div

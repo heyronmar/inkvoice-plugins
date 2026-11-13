@@ -27,10 +27,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useTranslation } from "@/i18n";
 import { usePluginsStore } from "@/plugins/use-plugins.store";
 import type { CrmConfig, LeadEvent, StageActions } from "./api";
-import { eventsFor, stageRole, stageTrigger, useLeadLabels } from "./config";
+import { eventsFor, stageRole, stageTrigger, useCrmTranslation, useLeadLabels } from "./config";
 
 const MANUAL = "manual";
 
@@ -48,7 +47,7 @@ export function StageAutomationsDialog({
   /** Receives the whole config with this stage's rules changed. */
   onApply: (config: CrmConfig) => Promise<void> | void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const { stageLabel } = useLeadLabels(config);
   const timeTrackingOn = usePluginsStore((s) => s.isEnabled("time-tracker"));
   const [draft, setDraft] = useState(config);

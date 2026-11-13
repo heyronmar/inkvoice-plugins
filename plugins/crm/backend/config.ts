@@ -101,7 +101,14 @@ export interface StageSetting {
   actions: StageActions;
 }
 
+/** What the business calls its leads (deal, project, job…); null uses the default word. */
+export interface CrmTerm {
+  one: string | null;
+  many: string | null;
+}
+
 export interface CrmConfig {
+  term: CrmTerm;
   /** Open stages in board order, then Won, then Lost. */
   stages: StageSetting[];
   sources: string[];
@@ -145,6 +152,7 @@ const noActions = (): StageActions => ({
 
 export function defaultCrmConfig(): CrmConfig {
   return {
+    term: { one: null, many: null },
     stages: [...DEFAULT_OPEN_STAGES, ...CLOSED_STAGES].map((id) => ({
       id,
       label: null,
@@ -262,7 +270,10 @@ export function normalise(input: Partial<CrmConfig> & LegacyConfig): CrmConfig {
     .map((s) => String(s).trim())
     .filter((s, i, all) => s && all.indexOf(s) === i);
 
-  return { stages, sources, triggers };
+  const word = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 30) || null : null);
+  const term = { one: word(input.term?.one), many: word(input.term?.many) };
+
+  return { term, stages, sources, triggers };
 }
 
 export function getCrmConfig(): CrmConfig {

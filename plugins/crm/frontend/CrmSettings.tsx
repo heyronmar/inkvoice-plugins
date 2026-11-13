@@ -29,10 +29,10 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Hint, TooltipProvider } from "@/components/ui/tooltip";
-import { useTranslation } from "@/i18n";
 import { cn } from "@/lib/utils";
 import {
   type CrmConfig,
+  type CrmTerm,
   crmApi,
   isClosed,
   MAX_OPEN_STAGES,
@@ -46,12 +46,13 @@ import {
   STAGE_SWATCHES,
   tidyTriggers,
   useCrmConfig,
+  useCrmTranslation,
   useLeadLabels,
 } from "./config";
 import { StageAutomationsDialog } from "./StageAutomations";
 
 export default function CrmSettings() {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const { config: saved, setConfig: setSaved, loaded } = useCrmConfig();
   const [draft, setDraft] = useState<CrmConfig>(saved);
   const [newSource, setNewSource] = useState("");
@@ -163,6 +164,10 @@ export default function CrmSettings() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
+        <Section title={t("crm.settings_term")} hint={t("crm.settings_term_hint")}>
+          <TermPicker term={draft.term} onChange={(term) => setDraft((d) => ({ ...d, term }))} />
+        </Section>
+
         <Section title={t("crm.settings_stages")} hint={t("crm.settings_stages_hint")}>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={open.map((s) => s.id)} strategy={verticalListSortingStrategy}>
@@ -259,6 +264,73 @@ export default function CrmSettings() {
   );
 }
 
+/** Common words, each with its plural. "lead" is the default, stored as null. */
+const TERM_PRESETS = ["lead", "deal", "project", "job", "opportunity", "enquiry"] as const;
+
+function TermPicker({ term, onChange }: { term: CrmTerm; onChange: (term: CrmTerm) => void }) {
+  const { t } = useCrmTranslation();
+  const preset = (key: (typeof TERM_PRESETS)[number]): CrmTerm =>
+    key === "lead"
+      ? { one: null, many: null }
+      : { one: t(`crm.term_${key}_one`), many: t(`crm.term_${key}_many`) };
+  const isPreset = (key: (typeof TERM_PRESETS)[number]) => {
+    const p = preset(key);
+    return p.one === term.one && p.many === term.many;
+  };
+  const custom = !TERM_PRESETS.some(isPreset);
+  const [editing, setEditing] = useState(custom);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {TERM_PRESETS.map((key) => (
+          <Button
+            key={key}
+            type="button"
+            size="sm"
+            variant={isPreset(key) && !editing ? "secondary" : "outline"}
+            aria-pressed={isPreset(key) && !editing}
+            onClick={() => {
+              setEditing(false);
+              onChange(preset(key));
+            }}
+          >
+            {t(`crm.term_${key}_many_label`)}
+          </Button>
+        ))}
+        <Button
+          type="button"
+          size="sm"
+          variant={editing || custom ? "secondary" : "outline"}
+          aria-pressed={editing || custom}
+          onClick={() => setEditing(true)}
+        >
+          {t("crm.term_custom")}
+        </Button>
+      </div>
+      {(editing || custom) && (
+        <div className="flex max-w-md flex-wrap gap-2">
+          <Input
+            className="min-w-0 flex-1"
+            maxLength={30}
+            value={term.one ?? ""}
+            placeholder={t("crm.term_one_placeholder")}
+            aria-label={t("crm.term_one_placeholder")}
+            onChange={(e) => onChange({ ...term, one: e.target.value || null })}
+          />
+          <Input
+            className="min-w-0 flex-1"
+            maxLength={30}
+            value={term.many ?? ""}
+            placeholder={t("crm.term_many_placeholder")}
+            aria-label={t("crm.term_many_placeholder")}
+            onChange={(e) => onChange({ ...term, many: e.target.value || null })}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section className="space-y-3">
@@ -288,7 +360,7 @@ function StageRow({
   onAutomate: () => void;
   onRemove?: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: stage.id,
     disabled: locked,
@@ -420,7 +492,7 @@ function ColorPicker({
   label: string;
   onChange: (color: StageColor) => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>

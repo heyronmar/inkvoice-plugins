@@ -14,8 +14,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { useTranslation } from "@/i18n";
 import { type CrmConfig, crmApi, isClosed, type Lead } from "./api";
+import { useCrmTranslation } from "./config";
 import {
   ALL_FIELDS,
   formToInput,
@@ -51,7 +51,7 @@ export function LeadDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   // New leads start in the first stage; its follow-up action (if any) runs on save.
   const firstStage = stages.find((s) => !isClosed(s)) ?? stages[0] ?? "new";
   const [form, setForm] = useState<LeadForm>(() => leadToForm(lead, firstStage));

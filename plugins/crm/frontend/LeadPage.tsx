@@ -39,11 +39,10 @@ import {
 } from "@/components/ui/card";
 import { Hint, TooltipProvider } from "@/components/ui/tooltip";
 import { useCan } from "@/hooks/use-can";
-import { useTranslation } from "@/i18n";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/settings.store";
 import { type Activity, type CrmConfig, crmApi, isClosed, type Lead } from "./api";
-import { stageStyle, useCrmConfig, useLeadLabels } from "./config";
+import { stageStyle, useCrmConfig, useCrmTranslation, useLeadLabels } from "./config";
 
 import { formToInput, type LeadField, LeadFields, type LeadForm, leadToForm } from "./LeadFields";
 import { LeadTypeIcon } from "./LeadTypeIcon";
@@ -69,7 +68,7 @@ function localToday(): string {
 
 export default function LeadPage() {
   const { id = "" } = useParams();
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const navigate = useNavigate();
   const can = useCan();
   const canCreate = can("customers", "create");
@@ -409,7 +408,7 @@ export default function LeadPage() {
 }
 
 function BackLink() {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   return (
     <Link
       to="/crm"
@@ -508,7 +507,7 @@ function ActivityTimeline({
   lead: Lead;
   config: CrmConfig;
 }) {
-  const { t } = useTranslation();
+  const { t } = useCrmTranslation();
   const { stageLabel } = useLeadLabels(config);
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">{t("crm.activity_empty")}</p>;
