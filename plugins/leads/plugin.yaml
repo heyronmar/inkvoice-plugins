@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/pigontech/inkvoice-plugins/main/schema/plugin.schema.json
+id: leads
+name: Leads
+tagline: Track potential customers from first contact to a won deal.
+description: |
+  Keep a list of leads with where they came from, an estimated value and a next
+  follow-up date, as a list or a board. Shape the pipeline with your own stages,
+  let quotes and invoices move leads along, and turn a lead into a customer and
+  a quote in one click.
+
+  Off by default. Leads live in the same database as your invoices.
+category: productivity
+status: available
+availability: oss
+requires_feature: null
+icon: Target
+docs: https://github.com/heyronmar/inkvoice-plugins/tree/main/plugins/leads
+source: https://github.com/heyronmar/inkvoice-plugins/tree/main/plugins/leads
+versions:
+  - version: "1.0.0"
+    min_app: "0.3.3"
+    released: "2026-11-12"
+    changelog: Leads list and board, follow-ups, convert to customer, start a quote.
+  - version: "1.1.0"
+    min_app: "0.3.3"
+    released: "2026-11-13"
+    changelog: Settings for stage order, names and sources; quote-driven automations.
+  - version: "1.2.0"
+    min_app: "0.3.7"
+    released: "2026-11-13"
+    changelog: Your own stages (up to 8 plus Won and Lost) with per-stage automations; leads follow their quote.

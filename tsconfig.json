@@ -1,0 +1,21 @@
+{
+  // This repo is mounted into the app at packages/inkvoice-plugins (a git
+  // submodule), so these paths reach the app's own code. Bun uses them at
+  // runtime; the app's tsconfigs carry the same aliases for type checking.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["bun"],
+    "baseUrl": ".",
+    "paths": {
+      "@inkvoice/backend/*": ["../backend/src/*"],
+      "@/*": ["../frontend/src/*"]
+    }
+  },
+  "include": ["plugins/**/*"]
+}
