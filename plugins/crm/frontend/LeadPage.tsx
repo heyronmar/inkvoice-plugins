@@ -1,17 +1,15 @@
 // A lead's own page (/crm/leads/:id), opened by clicking a lead on the CRM
 // list or board. Laid out for richer lead data to come:
 //  - header: who it is, its stage, and what to do next (quote, customer…)
+//  - each card edits its own fields in place (✏️), with the dialog's fields
 //  - main column: details, notes, activity history
 //  - side column: pipeline position, next follow-up, linked records
-// The stage pill in the header moves the lead (click it, pick a stage).
 // New sections slot into one of the two columns as their own components.
 
 import {
   ArrowLeft,
   ArrowRight,
   CalendarClock,
-  Check,
-  ChevronDown,
   Clock,
   FilePlus,
   FileText,
@@ -29,21 +27,23 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Hint, TooltipProvider } from "@/components/ui/tooltip";
 import { useCan } from "@/hooks/use-can";
 import { useTranslation } from "@/i18n";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/settings.store";
-import { type Activity, type CrmConfig, crmApi, isClosed, type Lead } from "./api";
-import { STAGE_SWATCHES, stageStyle, useCrmConfig, useLeadLabels } from "./config";
+import { type Activity, type CrmConfig, crmApi, isClosed, type Lead, type LeadInput } from "./api";
+import { stageStyle, useCrmConfig, useLeadLabels } from "./config";
 
-const stageColor = (config: CrmConfig, id: string) =>
-  config.stages.find((s) => s.id === id)?.color ?? "slate";
-
-import { LeadDialog } from "./LeadDialog";
+import { formToInput, type LeadField, LeadFields, type LeadForm, leadToForm } from "./LeadFields";
 import { LeadTypeIcon } from "./LeadTypeIcon";
 
 function localToday(): string {
@@ -68,7 +68,6 @@ export default function LeadPage() {
   const [lead, setLead] = useState<Lead | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [missing, setMissing] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const load = useCallback(async () => {
@@ -85,13 +84,15 @@ export default function LeadPage() {
     load();
   }, [load]);
 
-  const run = async (action: () => Promise<unknown>, success?: string) => {
+  const run = async (action: () => Promise<unknown>, success?: string): Promise<boolean> => {
     try {
       await action();
       if (success) toast.success(success);
       await load();
+      return true;
     } catch (e) {
       toast.error((e as Error).message);
+      return false;
     }
   };
 
@@ -110,6 +111,15 @@ export default function LeadPage() {
   const overdue = !!lead.next_follow_up && !closed && lead.next_follow_up < today;
   // Stages to pick from: the visible ones, plus the lead's own if it's hidden.
   const stages = config.stages.filter((s) => !s.hidden || s.id === lead.stage).map((s) => s.id);
+
+  // What every editable card needs: each one saves only its own fields.
+  const edit = {
+    lead,
+    config,
+    stages,
+    editable: canEdit,
+    onSave: (input: LeadInput) => run(() => crmApi.update(lead.id, input), t("crm.saved")),
+  };
 
   const createQuote = async () => {
     try {
@@ -130,13 +140,7 @@ export default function LeadPage() {
             <div className="flex flex-wrap items-center gap-2">
               <LeadTypeIcon type={lead.lead_type} className="h-5 w-5" />
               <h1 className="text-2xl font-bold tracking-tight">{lead.name}</h1>
-              <StagePill
-                config={config}
-                stage={lead.stage}
-                stages={stages}
-                editable={canEdit}
-                onMove={(stage) => run(() => crmApi.update(lead.id, { stage }))}
-              />
+              <Badge className={stageStyle(config, lead.stage)}>{stageLabel(lead.stage)}</Badge>
               {overdue && <Badge variant="destructive">{t("crm.overdue")}</Badge>}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
@@ -176,11 +180,6 @@ export default function LeadPage() {
                 </Button>
               )
             )}
-            {canEdit && (
-              <Button onClick={() => setEditing(true)}>
-                <Pencil className="h-4 w-4" /> {t("common.edit")}
-              </Button>
-            )}
             {canDelete && (
               <Hint label={t("common.delete")}>
                 <Button
@@ -199,7 +198,12 @@ export default function LeadPage() {
         <div className="grid gap-4 lg:grid-cols-3">
           {/* Main column */}
           <div className="space-y-4 lg:col-span-2">
-            <Section title={t("crm.section_details")}>
+            <EditableSection
+              {...edit}
+              title={t("crm.section_details")}
+              hint={lead.customer_id ? t("crm.shared_with_customer") : undefined}
+              fields={["lead_type", "name", "company", "email", "phone", "source", "value"]}
+            >
               <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
                 <Field label={t("customers.type")}>
                   {t(
@@ -236,15 +240,15 @@ export default function LeadPage() {
                   {formatDate(lead.created_at.slice(0, 10))}
                 </Field>
               </dl>
-            </Section>
+            </EditableSection>
 
-            <Section title={t("crm.field_notes")}>
+            <EditableSection {...edit} title={t("crm.field_notes")} fields={["notes"]}>
               {lead.notes ? (
                 <p className="whitespace-pre-wrap text-sm">{lead.notes}</p>
               ) : (
                 <p className="text-sm text-muted-foreground">{t("crm.no_notes")}</p>
               )}
-            </Section>
+            </EditableSection>
 
             <Section title={t("crm.section_activity")}>
               <ActivityTimeline items={activity} lead={lead} config={config} />
@@ -253,7 +257,7 @@ export default function LeadPage() {
 
           {/* Side column */}
           <div className="space-y-4">
-            <Section title={t("crm.section_pipeline")}>
+            <EditableSection {...edit} title={t("crm.section_pipeline")} fields={["stage"]}>
               <ol className="space-y-1.5">
                 {stages.map((s, i) => {
                   const at = stages.indexOf(lead.stage);
@@ -279,25 +283,19 @@ export default function LeadPage() {
                   );
                 })}
               </ol>
-            </Section>
+            </EditableSection>
 
-            <Section title={t("crm.field_follow_up")}>
-              {canEdit && !closed ? (
-                <Input
-                  type="date"
-                  aria-label={t("crm.field_follow_up")}
-                  value={lead.next_follow_up ?? ""}
-                  onChange={(e) =>
-                    run(() => crmApi.update(lead.id, { next_follow_up: e.target.value || null }))
-                  }
-                />
-              ) : (
-                <p className="text-sm">
-                  {lead.next_follow_up ? formatDate(lead.next_follow_up) : t("crm.none")}
-                </p>
-              )}
+            <EditableSection
+              {...edit}
+              editable={canEdit && !closed}
+              title={t("crm.field_follow_up")}
+              fields={["next_follow_up"]}
+            >
+              <p className="text-sm">
+                {lead.next_follow_up ? formatDate(lead.next_follow_up) : t("crm.none")}
+              </p>
               {overdue && <p className="text-xs text-destructive">{t("crm.follow_up_overdue")}</p>}
-            </Section>
+            </EditableSection>
 
             <Section title={t("crm.section_linked")}>
               <LinkRow
@@ -306,6 +304,21 @@ export default function LeadPage() {
                 to={lead.customer_id ? `/customers/${lead.customer_id}` : undefined}
                 value={lead.customer_id ? t("crm.view_customer") : t("crm.linked_none")}
               />
+              {lead.customer_id && canEdit && (
+                // The app's own customer form (address, tax…), coming back here after saving.
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-0"
+                  onClick={() =>
+                    navigate(`/customers/${lead.customer_id}/edit`, {
+                      state: { returnTo: `/crm/leads/${lead.id}` },
+                    })
+                  }
+                >
+                  <Pencil className="h-3.5 w-3.5" /> {t("crm.edit_customer")}
+                </Button>
+              )}
               <LinkRow
                 icon={<FileText className="h-4 w-4" />}
                 label={t("crm.linked_quote")}
@@ -328,14 +341,6 @@ export default function LeadPage() {
           </div>
         </div>
 
-        <LeadDialog
-          open={editing}
-          lead={lead}
-          config={config}
-          stages={stages}
-          onOpenChange={setEditing}
-          onSaved={load}
-        />
         <ConfirmDialog
           open={confirmDelete}
           onOpenChange={setConfirmDelete}
@@ -358,71 +363,6 @@ export default function LeadPage() {
   );
 }
 
-/**
- * The lead's stage as a pill. Click it to move the lead to another stage;
- * the move runs that stage's automations, like dragging it on the board.
- */
-function StagePill({
-  config,
-  stage,
-  stages,
-  editable,
-  onMove,
-}: {
-  config: CrmConfig;
-  stage: string;
-  stages: string[];
-  editable: boolean;
-  onMove: (stage: string) => void;
-}) {
-  const { t } = useTranslation();
-  const { stageLabel } = useLeadLabels(config);
-  const [open, setOpen] = useState(false);
-  const pill = cn(
-    "inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium",
-    stageStyle(config, stage),
-  );
-  if (!editable) return <span className={pill}>{stageLabel(stage)}</span>;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Hint label={t("crm.move_stage")}>
-        <PopoverTrigger
-          render={
-            <button
-              type="button"
-              className={cn(pill, "cursor-pointer hover:ring-2 hover:ring-ring/30")}
-              aria-label={`${t("crm.move_stage")}: ${stageLabel(stage)}`}
-            />
-          }
-        >
-          {stageLabel(stage)}
-          <ChevronDown className="h-3 w-3 opacity-70" />
-        </PopoverTrigger>
-      </Hint>
-      <PopoverContent className="w-56 p-1" align="start">
-        <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("crm.move_stage")}</p>
-        {stages.map((s) => (
-          <button
-            key={s}
-            type="button"
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-            onClick={() => {
-              setOpen(false);
-              if (s !== stage) onMove(s);
-            }}
-          >
-            <span
-              className={cn("h-2 w-2 shrink-0 rounded-full", STAGE_SWATCHES[stageColor(config, s)])}
-            />
-            <span className="flex-1">{stageLabel(s)}</span>
-            {s === stage && <Check className="h-4 w-4 text-primary" />}
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 function BackLink() {
   const { t } = useTranslation();
   return (
@@ -435,14 +375,107 @@ function BackLink() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  hint,
+  action,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
+        {hint && <CardDescription>{hint}</CardDescription>}
+        {action && <CardAction>{action}</CardAction>}
       </CardHeader>
       <CardContent className="space-y-3">{children}</CardContent>
     </Card>
+  );
+}
+
+/**
+ * A card with its own ✏️: editing swaps the view for the lead form's fields
+ * (LeadFields, the same ones as the dialog) and saves only those fields.
+ */
+function EditableSection({
+  title,
+  hint,
+  fields,
+  lead,
+  config,
+  stages,
+  editable,
+  onSave,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  fields: LeadField[];
+  lead: Lead;
+  config: CrmConfig;
+  stages: string[];
+  editable: boolean;
+  onSave: (input: LeadInput) => Promise<boolean>;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState<LeadForm | null>(null);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!form) return;
+    setSaving(true);
+    if (await onSave(formToInput(form, fields))) setForm(null);
+    setSaving(false);
+  };
+  const invalid = !!form && fields.includes("name") && !form.name.trim();
+  return (
+    <Section
+      title={title}
+      hint={hint}
+      action={
+        editable && !form ? (
+          <Hint label={t("common.edit")}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`${t("common.edit")}: ${title}`}
+              onClick={() => setForm(leadToForm(lead, lead.stage))}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </Hint>
+        ) : undefined
+      }
+    >
+      {form ? (
+        <div className="space-y-3">
+          <LeadFields
+            form={form}
+            onChange={setForm}
+            config={config}
+            lead={lead}
+            stages={stages}
+            fields={fields}
+            className={fields.length === 1 ? "sm:grid-cols-1" : undefined}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setForm(null)} disabled={saving}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={save} disabled={saving || invalid}>
+              {saving ? t("common.saving") : t("common.save")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
+    </Section>
   );
 }
 

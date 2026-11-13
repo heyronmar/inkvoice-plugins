@@ -13,7 +13,11 @@ import crypto from "node:crypto";
 import { getDb } from "@inkvoice/backend/database/connection";
 import { isPluginEnabled } from "@inkvoice/backend/plugins/settings";
 import { createProject, getProject } from "@inkvoice/backend/plugins/time-tracker/service";
-import { createCustomer, getCustomer } from "@inkvoice/backend/services/customer.service";
+import {
+  createCustomer,
+  getCustomer,
+  updateCustomer,
+} from "@inkvoice/backend/services/customer.service";
 import { todayIso } from "@inkvoice/backend/utils/date";
 import {
   type CrmConfig,
@@ -379,6 +383,57 @@ export function syncLeads(ctx: Context = {}): void {
   }
 }
 
+// ── Shared with the customer ────────────────────────────────────────────────
+//
+// Once a lead is a customer, its name, company, email, phone and type are the
+// customer's: editing them in CRM saves to the customer (through the app's own
+// customer service, so invoices, quotes and the Customers list see it), and a
+// change made to the customer anywhere else shows up on the lead.
+
+/** Fields a lead shares with its customer. */
+const SHARED_FIELDS = ["name", "company", "email", "phone", "lead_type"] as const;
+
+/** A company is known by its company name, a person by their own. */
+function customerName(lead: Pick<Lead, "lead_type" | "company" | "name">): string {
+  return lead.lead_type === "company" ? lead.company || lead.name : lead.name;
+}
+
+function pushToCustomer(leadId: string): void {
+  const lead = getLead(leadId);
+  if (!lead?.customer_id) return;
+  const customer = getCustomer(lead.customer_id);
+  if (!customer) return;
+  // updateCustomer replaces every field, so start from the customer as it is.
+  const { tags: _tags, ...current } = customer as typeof customer & { tags?: string[] };
+  updateCustomer(customer.id, {
+    ...current,
+    name: customerName(lead),
+    email: lead.email ?? "",
+    phone: lead.phone ?? "",
+    customer_type: lead.lead_type,
+  });
+}
+
+/** Bring converted leads up to date with changes made to their customers. */
+export function pullFromCustomers(leadId?: string): void {
+  getDb().run(
+    `UPDATE crm_leads SET
+       email = c.email,
+       phone = c.phone,
+       lead_type = c.customer_type,
+       company = CASE WHEN c.customer_type = 'company' THEN c.name ELSE NULL END,
+       name = CASE WHEN c.customer_type = 'individual' THEN c.name ELSE crm_leads.name END
+       FROM customers c
+      WHERE c.id = crm_leads.customer_id ${leadId ? "AND crm_leads.id = ?" : ""}
+        AND (crm_leads.email IS NOT c.email OR crm_leads.phone IS NOT c.phone
+             OR crm_leads.lead_type IS NOT c.customer_type
+             OR (c.customer_type = 'company' AND crm_leads.company IS NOT c.name)
+             OR (c.customer_type = 'individual'
+                 AND (crm_leads.name IS NOT c.name OR crm_leads.company IS NOT NULL)))`,
+    leadId ? [leadId] : [],
+  );
+}
+
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
 function whereClause(filters: Omit<LeadFilters, "stage">) {
@@ -401,6 +456,7 @@ function whereClause(filters: Omit<LeadFilters, "stage">) {
 }
 
 export function listLeads(filters: LeadFilters = {}, ctx: Context = {}): Lead[] {
+  pullFromCustomers();
   syncLeads(ctx);
   const { conditions, params } = whereClause(filters);
   if (filters.stage) {
@@ -470,6 +526,13 @@ export function updateLead(id: string, input: Partial<LeadInput>, ctx: Context =
     );
   }
 
+  // A converted lead's shared fields are the customer's: save them there too.
+  if (
+    existing.customer_id &&
+    SHARED_FIELDS.some((f) => input[f] !== undefined && clean(input[f]) !== existing[f])
+  ) {
+    pushToCustomer(id);
+  }
   if (followUpChanged && followUp) {
     logActivity(id, "follow_up_set", { date: followUp }, ctx.userId);
   }
@@ -522,7 +585,7 @@ export function convertLead(
   }
   const contact = lead.company ? `Contact: ${lead.name}` : "";
   const customer = createCustomer({
-    name: lead.company || lead.name,
+    name: customerName(lead),
     customer_type: lead.lead_type,
     email: lead.email ?? "",
     phone: lead.phone ?? "",

@@ -10,7 +10,7 @@ import "@inkvoice/backend/plugins"; // registers leads so its migrations run
 import { getDb } from "@inkvoice/backend/database/connection";
 import { runPluginMigrations } from "@inkvoice/backend/plugins/runner";
 import { setPluginEnabled } from "@inkvoice/backend/plugins/settings";
-import { getCustomer } from "@inkvoice/backend/services/customer.service";
+import { getCustomer, updateCustomer } from "@inkvoice/backend/services/customer.service";
 import { acceptQuote, createQuote, rejectQuote } from "@inkvoice/backend/services/quote.service";
 import { resetEnvCache } from "@inkvoice/backend/utils/env";
 import { defaultCrmConfig, saveCrmConfig } from "../backend/config";
@@ -96,6 +96,38 @@ describe("leads service", () => {
     expect(customer.notes).toContain("Contact: Mere");
     expect(customer.customer_type).toBe("company");
     expect(convertLead(lead.id)!.customer_id).toBe(first.customer_id);
+  });
+
+  test("a converted lead shares its details with the customer, both ways", () => {
+    const lead = createLead({ name: "Mere", company: "Rata Design", email: "mere@rata.nz" });
+    const { customer_id } = convertLead(lead.id)!;
+
+    // Edited in CRM: saved to the customer, other customer fields kept.
+    updateCustomer(customer_id, { ...getCustomer(customer_id)!, city: "Nelson" });
+    updateLead(lead.id, { company: "Rata Studio", phone: "021 777 888" });
+    expect(getCustomer(customer_id)).toMatchObject({
+      name: "Rata Studio",
+      phone: "021 777 888",
+      email: "mere@rata.nz",
+      city: "Nelson",
+    });
+
+    // Edited on the customer: shows on the lead.
+    updateCustomer(customer_id, {
+      ...getCustomer(customer_id)!,
+      email: "hello@rata.nz",
+      name: "Rata Studio Ltd",
+    });
+    listLeads();
+    expect(getLead(lead.id)).toMatchObject({
+      email: "hello@rata.nz",
+      company: "Rata Studio Ltd",
+      name: "Mere",
+    });
+
+    // Switching to individual renames the customer after the person.
+    updateLead(lead.id, { lead_type: "individual", company: null });
+    expect(getCustomer(customer_id)).toMatchObject({ name: "Mere", customer_type: "individual" });
   });
 
   test("lead type: chosen, or taken from the company name; carried to the customer", async () => {

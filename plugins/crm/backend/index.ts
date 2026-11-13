@@ -153,6 +153,7 @@ routes.get("/leads/export", requirePermission("customers", "export"), (c) => {
 });
 
 routes.get("/leads/:id", requirePermission("customers", "read"), (c) => {
+  svc.pullFromCustomers(c.req.param("id"));
   const lead = svc.getLead(c.req.param("id"));
   if (!lead) return c.json({ success: false, error: "Lead not found" }, 404);
   return c.json(ok(lead));

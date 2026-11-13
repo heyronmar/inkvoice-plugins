@@ -78,7 +78,9 @@ registerTranslations("en", {
     settings_stage_needs_name: "Give every new stage a name",
     automations: "Automations",
     back_to_crm: "Back to CRM",
-    move_stage: "Move to stage",
+    shared_with_customer:
+      "Name, company, email, phone and type are shared with the customer: changes here update it everywhere, and changes to the customer show here.",
+    edit_customer: "Edit customer",
     lead_not_found: "This lead doesn't exist any more.",
     section_details: "Details",
     section_activity: "Activity",
@@ -225,7 +227,9 @@ registerTranslations("tr", {
     settings_stage_needs_name: "Her yeni aşamaya bir ad verin",
     automations: "Otomasyonlar",
     back_to_crm: "CRM'e dön",
-    move_stage: "Aşamaya taşı",
+    shared_with_customer:
+      "Ad, şirket, e-posta, telefon ve tür müşteriyle ortaktır: buradaki değişiklikler her yerde güncellenir, müşterideki değişiklikler burada görünür.",
+    edit_customer: "Müşteriyi düzenle",
     lead_not_found: "Bu kayıt artık yok.",
     section_details: "Bilgiler",
     section_activity: "Etkinlik",
