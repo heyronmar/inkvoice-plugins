@@ -1,4 +1,4 @@
-// Leads frontend registration: a protected route (guarded by PluginGuard), a
+// CRM frontend registration: a protected route (guarded by PluginGuard), a
 // sidebar item under Plugins, its i18n, and its entry in the admin Plugins tab.
 
 import { Target } from "lucide-react";
@@ -7,24 +7,24 @@ import { PluginGuard } from "@/plugins/PluginGuard";
 import { registerPlugin } from "@/plugins/registry";
 import { registerRoute } from "@/route-registry";
 import "./i18n";
-import LeadsPage from "./LeadsPage";
-import LeadsSettings from "./LeadsSettings";
+import CrmPage from "./CrmPage";
+import CrmSettings from "./CrmSettings";
 
-const PLUGIN_ID = "leads";
+const PLUGIN_ID = "crm";
 
 registerRoute({
-  path: "/leads",
+  path: "/crm",
   element: (
     <PluginGuard pluginId={PLUGIN_ID}>
-      <LeadsPage />
+      <CrmPage />
     </PluginGuard>
   ),
   scope: "protected",
 });
 
 registerNavItem({
-  to: "/leads",
-  labelKey: "leads.nav",
+  to: "/crm",
+  labelKey: "crm.nav",
   icon: Target,
   section: "nav.plugins",
   pluginId: PLUGIN_ID,
@@ -32,8 +32,8 @@ registerNavItem({
 
 registerPlugin({
   id: PLUGIN_ID,
-  nameKey: "leads.name",
-  descriptionKey: "leads.description",
+  nameKey: "crm.name",
+  descriptionKey: "crm.description",
   icon: Target,
-  settings: LeadsSettings,
+  settings: CrmSettings,
 });

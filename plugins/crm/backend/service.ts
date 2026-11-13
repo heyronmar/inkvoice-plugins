@@ -1,4 +1,4 @@
-// Leads business logic: a sales pipeline the business shapes itself (its own
+// CRM business logic: a sales pipeline the business shapes itself (its own
 // working stages, then Won and Lost), follow-up dates, conversion into a real
 // customer, and per-stage automations.
 //
@@ -16,12 +16,12 @@ import { createProject, getProject } from "@inkvoice/backend/plugins/time-tracke
 import { createCustomer, getCustomer } from "@inkvoice/backend/services/customer.service";
 import { todayIso } from "@inkvoice/backend/utils/date";
 import {
-  getLeadsConfig,
+  type CrmConfig,
+  getCrmConfig,
   getStage,
   isClosed,
   LEAD_EVENTS,
   type LeadEvent,
-  type LeadsConfig,
 } from "./config";
 
 export { LEAD_SOURCES } from "./config";
@@ -86,7 +86,7 @@ const FIELDS = [
 ] as const;
 
 const SELECT = `SELECT l.*, q.quote_number, q.status AS quote_status
-                  FROM ld_leads l
+                  FROM crm_leads l
                   LEFT JOIN quotes q ON q.id = l.quote_id AND q.deleted_at IS NULL`;
 
 /** Blank strings are stored as NULL so "no email" and "" never differ. */
@@ -113,11 +113,11 @@ function seenEvents(raw: string | null): LeadEvent[] | null {
   }
 }
 
-export function firstOpenStage(config: LeadsConfig = getLeadsConfig()): string {
+export function firstOpenStage(config: CrmConfig = getCrmConfig()): string {
   return config.stages.find((s) => !isClosed(s.id))?.id ?? "won";
 }
 
-export function stageExists(id: string, config: LeadsConfig = getLeadsConfig()): boolean {
+export function stageExists(id: string, config: CrmConfig = getCrmConfig()): boolean {
   return config.stages.some((s) => s.id === id);
 }
 
@@ -128,13 +128,13 @@ export function stageExists(id: string, config: LeadsConfig = getLeadsConfig()):
  * the user set the follow-up date in the same change, which then wins.
  */
 function arrive(id: string, stageId: string, ctx: Context, followUpGiven: boolean): void {
-  const stage = getStage(getLeadsConfig(), stageId);
+  const stage = getStage(getCrmConfig(), stageId);
   if (!stage) return;
   const { make_customer, follow_up_days, create_project } = stage.actions;
   if (make_customer) convertLead(id);
   if (create_project) ensureProject(id);
   if (follow_up_days && !followUpGiven) {
-    getDb().run("UPDATE ld_leads SET next_follow_up = ? WHERE id = ?", [
+    getDb().run("UPDATE crm_leads SET next_follow_up = ? WHERE id = ?", [
       addDays(ctx.today ?? todayIso(), follow_up_days),
       id,
     ]);
@@ -142,7 +142,7 @@ function arrive(id: string, stageId: string, ctx: Context, followUpGiven: boolea
 }
 
 function moveLead(id: string, stage: string, ctx: Context, followUpGiven = false): void {
-  getDb().run("UPDATE ld_leads SET stage = ?, updated_at = datetime('now') WHERE id = ?", [
+  getDb().run("UPDATE crm_leads SET stage = ?, updated_at = datetime('now') WHERE id = ?", [
     stage,
     id,
   ]);
@@ -165,7 +165,7 @@ function ensureProject(id: string): void {
     name: lead.company || lead.name,
     customer_id: converted.customer_id,
   });
-  getDb().run("UPDATE ld_leads SET project_id = ? WHERE id = ?", [project.id, id]);
+  getDb().run("UPDATE crm_leads SET project_id = ? WHERE id = ?", [project.id, id]);
 }
 
 // ── Quote events ────────────────────────────────────────────────────────────
@@ -218,7 +218,7 @@ function nextQuote(leadId: string, customerId: string, since: string, skip: stri
       `SELECT id, status, converted_invoice_id, created_at FROM quotes q
         WHERE q.customer_id = ? AND q.deleted_at IS NULL AND q.created_at >= ?
           AND q.id IS NOT ?
-          AND NOT EXISTS (SELECT 1 FROM ld_leads o WHERE o.quote_id = q.id AND o.id != ?)
+          AND NOT EXISTS (SELECT 1 FROM crm_leads o WHERE o.quote_id = q.id AND o.id != ?)
         ORDER BY q.created_at, q.rowid LIMIT 1`,
     )
     .get(customerId, since, skip, leadId) as QuoteRow | null;
@@ -242,12 +242,12 @@ interface SyncRow {
  * place (a revised quote revives the lead), unless the lead is already won.
  */
 export function syncLeads(ctx: Context = {}): void {
-  const config = getLeadsConfig();
+  const config = getCrmConfig();
   const db = getDb();
   const rows = db
     .query(
       `SELECT id, stage, customer_id, converted_at, quote_id, events_seen
-         FROM ld_leads WHERE customer_id IS NOT NULL`,
+         FROM crm_leads WHERE customer_id IS NOT NULL`,
     )
     .all() as SyncRow[];
 
@@ -290,7 +290,7 @@ export function syncLeads(ctx: Context = {}): void {
 
     const seenJson = JSON.stringify(seen);
     if (quoteId !== lead.quote_id || seenJson !== lead.events_seen) {
-      db.run("UPDATE ld_leads SET quote_id = ?, events_seen = ? WHERE id = ?", [
+      db.run("UPDATE crm_leads SET quote_id = ?, events_seen = ? WHERE id = ?", [
         quoteId,
         seenJson,
         lead.id,
@@ -346,7 +346,7 @@ export function countByStage(filters: Omit<LeadFilters, "stage"> = {}): Record<s
   const { conditions, params } = whereClause(filters);
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = getDb()
-    .query(`SELECT l.stage, COUNT(*) AS n FROM ld_leads l ${where} GROUP BY l.stage`)
+    .query(`SELECT l.stage, COUNT(*) AS n FROM crm_leads l ${where} GROUP BY l.stage`)
     .all(...params) as { stage: string; n: number }[];
   const counts: Record<string, number> = {};
   for (const r of rows) counts[r.stage] = r.n;
@@ -361,7 +361,7 @@ export function createLead(input: LeadInput, ctx: Context = {}): Lead {
   const id = crypto.randomBytes(16).toString("hex");
   const stage = input.stage ?? firstOpenStage();
   getDb().run(
-    `INSERT INTO ld_leads (id, ${FIELDS.join(", ")}, events_seen)
+    `INSERT INTO crm_leads (id, ${FIELDS.join(", ")}, events_seen)
      VALUES (?, ${FIELDS.map(() => "?").join(", ")}, '[]')`,
     [id, ...FIELDS.map((f) => (f === "stage" ? stage : clean(input[f])))],
   );
@@ -381,7 +381,7 @@ export function updateLead(id: string, input: Partial<LeadInput>, ctx: Context =
   const keys = FIELDS.filter((f) => input[f] !== undefined);
   if (keys.length > 0) {
     db.run(
-      `UPDATE ld_leads SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = datetime('now')
+      `UPDATE crm_leads SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = datetime('now')
         WHERE id = ?`,
       [...keys.map((k) => clean(input[k])), id],
     );
@@ -399,22 +399,22 @@ export function updateLead(id: string, input: Partial<LeadInput>, ctx: Context =
 /** The first time the user sets a follow-up on an open lead (e.g. "we've been in touch"). */
 function followUpEvent(id: string, ctx: Context): void {
   const db = getDb();
-  const row = db.query("SELECT stage, events_seen FROM ld_leads WHERE id = ?").get(id) as {
+  const row = db.query("SELECT stage, events_seen FROM crm_leads WHERE id = ?").get(id) as {
     stage: string;
     events_seen: string | null;
   };
   const seen = seenEvents(row.events_seen) ?? [];
   if (seen.includes("follow_up_set")) return;
-  db.run("UPDATE ld_leads SET events_seen = ? WHERE id = ?", [
+  db.run("UPDATE crm_leads SET events_seen = ? WHERE id = ?", [
     JSON.stringify([...seen, "follow_up_set"]),
     id,
   ]);
-  const target = getLeadsConfig().triggers.follow_up_set;
+  const target = getCrmConfig().triggers.follow_up_set;
   if (target && target !== row.stage && stageExists(target)) moveLead(id, target, ctx, true);
 }
 
 export function deleteLead(id: string): boolean {
-  return getDb().run("DELETE FROM ld_leads WHERE id = ?", [id]).changes > 0;
+  return getDb().run("DELETE FROM crm_leads WHERE id = ?", [id]).changes > 0;
 }
 
 /**
@@ -436,7 +436,7 @@ export function convertLead(id: string): { lead: Lead; customer_id: string } | n
     notes: [contact, lead.notes ?? ""].filter(Boolean).join("\n"),
   });
   getDb().run(
-    `UPDATE ld_leads SET customer_id = ?, converted_at = datetime('now'), updated_at = datetime('now')
+    `UPDATE crm_leads SET customer_id = ?, converted_at = datetime('now'), updated_at = datetime('now')
       WHERE id = ?`,
     [customer.id, id],
   );

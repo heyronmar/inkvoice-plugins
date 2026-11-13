@@ -1,21 +1,21 @@
-// Leads settings on the client: the stages (order, names, colours, automations)
+// CRM settings on the client: the stages (order, names, colours, automations)
 // and the source list, shared by the Leads page, the board and the settings panel.
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/i18n";
 import {
+  type CrmConfig,
+  crmApi,
   isClosed,
   LEAD_SOURCES,
   type LeadEvent,
-  type LeadsConfig,
-  leadsApi,
   type StageColor,
   type StageSetting,
 } from "./api";
 
 const noActions = () => ({ make_customer: false, follow_up_days: null, create_project: false });
 
-export const DEFAULT_CONFIG: LeadsConfig = {
+export const DEFAULT_CONFIG: CrmConfig = {
   stages: (
     [
       ["new", "sky"],
@@ -53,7 +53,7 @@ export const STAGE_SWATCHES: Record<StageColor, string> = {
   slate: "bg-slate-400",
 };
 
-export function stageStyle(config: LeadsConfig, id: string): string {
+export function stageStyle(config: CrmConfig, id: string): string {
   const color = config.stages.find((s) => s.id === id)?.color ?? "slate";
   return STAGE_STYLES[color];
 }
@@ -72,7 +72,7 @@ const rank = (e: LeadEvent) => FORWARD_EVENTS.indexOf(e);
 /** Where a stage sits decides which automations make sense (same rules as the server). */
 export type StageRole = "first" | "middle" | "won" | "lost";
 
-export function stageRole(config: LeadsConfig, id: string): StageRole {
+export function stageRole(config: CrmConfig, id: string): StageRole {
   if (id === "won" || id === "lost") return id;
   return config.stages.find((s) => !isClosed(s.id))?.id === id ? "first" : "middle";
 }
@@ -85,7 +85,7 @@ const ROLE_EVENTS: Record<StageRole, readonly LeadEvent[]> = {
 };
 
 /** The stage's own trigger, if it has one. */
-export function stageTrigger(config: LeadsConfig, id: string): LeadEvent | undefined {
+export function stageTrigger(config: CrmConfig, id: string): LeadEvent | undefined {
   return (Object.entries(config.triggers) as [LeadEvent, string][]).find(([, s]) => s === id)?.[0];
 }
 
@@ -94,7 +94,7 @@ export function stageTrigger(config: LeadsConfig, id: string): LeadEvent | undef
  * and keep the pipeline in order (after every earlier stage's event, before
  * every later stage's).
  */
-export function eventsFor(config: LeadsConfig, id: string): LeadEvent[] {
+export function eventsFor(config: CrmConfig, id: string): LeadEvent[] {
   const role = stageRole(config, id);
   if (role === "lost") return [...ROLE_EVENTS.lost];
   const ordered = config.stages.filter((s) => s.id !== "lost");
@@ -110,8 +110,8 @@ export function eventsFor(config: LeadsConfig, id: string): LeadEvent[] {
 }
 
 /** Drop rules that no longer fit, e.g. after stages are reordered. Same as the server. */
-export function tidyTriggers(config: LeadsConfig): LeadsConfig {
-  const triggers: LeadsConfig["triggers"] = {};
+export function tidyTriggers(config: CrmConfig): CrmConfig {
+  const triggers: CrmConfig["triggers"] = {};
   let last = -1;
   for (const stage of config.stages) {
     const role = stageRole(config, stage.id);
@@ -137,7 +137,7 @@ export function tidyTriggers(config: LeadsConfig): LeadsConfig {
 }
 
 /** How many automations a stage has, for the badge on its ⚡ button. */
-export function automationCount(config: LeadsConfig, stage: StageSetting): number {
+export function automationCount(config: CrmConfig, stage: StageSetting): number {
   const triggers = Object.values(config.triggers).filter((s) => s === stage.id).length;
   const { make_customer, follow_up_days, create_project } = stage.actions;
   return triggers + Number(make_customer) + Number(!!follow_up_days) + Number(create_project);
@@ -147,13 +147,13 @@ export function newStageId(): string {
   return `c_${Math.random().toString(36).slice(2, 10).padEnd(6, "0")}`;
 }
 
-export function useLeadsConfig() {
-  const [config, setConfig] = useState<LeadsConfig>(DEFAULT_CONFIG);
+export function useCrmConfig() {
+  const [config, setConfig] = useState<CrmConfig>(DEFAULT_CONFIG);
   const [loaded, setLoaded] = useState(false);
 
   const reload = useCallback(async () => {
     try {
-      const res = await leadsApi.getSettings();
+      const res = await crmApi.getSettings();
       setConfig(res.data);
     } catch {
       // Keep the defaults; the page still works without saved settings.
@@ -170,12 +170,12 @@ export function useLeadsConfig() {
 }
 
 /** Labels for stages and sources, honouring custom stage names. */
-export function useLeadLabels(config: LeadsConfig) {
+export function useLeadLabels(config: CrmConfig) {
   const { t } = useTranslation();
   const stageLabel = (id: string) =>
     config.stages.find((s) => s.id === id)?.label ||
-    (["new", "contacted", "quoted", "won", "lost"].includes(id) ? t(`leads.stage_${id}`) : id);
+    (["new", "contacted", "quoted", "won", "lost"].includes(id) ? t(`crm.stage_${id}`) : id);
   const sourceLabel = (source: string) =>
-    (LEAD_SOURCES as readonly string[]).includes(source) ? t(`leads.source_${source}`) : source;
+    (LEAD_SOURCES as readonly string[]).includes(source) ? t(`crm.source_${source}`) : source;
   return { stageLabel, sourceLabel };
 }

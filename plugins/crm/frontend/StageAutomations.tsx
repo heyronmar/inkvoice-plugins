@@ -1,5 +1,5 @@
 // One stage's automations, opened from the ⚡ button on a board column or a
-// stage row in Leads settings. Only what fits the stage's place is offered:
+// stage row in CRM settings. Only what fits the stage's place is offered:
 //  - the first stage is where new leads start, so nothing moves leads in;
 //  - other stages pick one event, and only events in pipeline order (after
 //    earlier stages' events, before later ones') are listed;
@@ -29,7 +29,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useTranslation } from "@/i18n";
 import { usePluginsStore } from "@/plugins/use-plugins.store";
-import type { LeadEvent, LeadsConfig, StageActions } from "./api";
+import type { CrmConfig, LeadEvent, StageActions } from "./api";
 import { eventsFor, stageRole, stageTrigger, useLeadLabels } from "./config";
 
 const MANUAL = "manual";
@@ -43,10 +43,10 @@ export function StageAutomationsDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  config: LeadsConfig;
+  config: CrmConfig;
   stageId: string | null;
   /** Receives the whole config with this stage's rules changed. */
-  onApply: (config: LeadsConfig) => Promise<void> | void;
+  onApply: (config: CrmConfig) => Promise<void> | void;
 }) {
   const { t } = useTranslation();
   const { stageLabel } = useLeadLabels(config);
@@ -71,7 +71,7 @@ export function StageAutomationsDialog({
       // One rule per stage: drop this stage's old event, then add the new one.
       const triggers = Object.fromEntries(
         Object.entries(d.triggers).filter(([, s]) => s !== stageId),
-      ) as LeadsConfig["triggers"];
+      ) as CrmConfig["triggers"];
       if (value !== MANUAL) triggers[value as LeadEvent] = stageId;
       return { ...d, triggers };
     });
@@ -104,7 +104,7 @@ export function StageAutomationsDialog({
         onCheckedChange={(v) => setAction({ follow_up_days: v ? 3 : null })}
       />
       <div className="space-y-2">
-        <Label htmlFor="action-follow-up">{t("leads.action_follow_up")}</Label>
+        <Label htmlFor="action-follow-up">{t("crm.action_follow_up")}</Label>
         {stage.actions.follow_up_days !== null && (
           <div className="flex items-center gap-2">
             <Input
@@ -112,7 +112,7 @@ export function StageAutomationsDialog({
               min={1}
               max={365}
               className="w-20"
-              aria-label={t("leads.settings_follow_up_days")}
+              aria-label={t("crm.settings_follow_up_days")}
               value={stage.actions.follow_up_days}
               onChange={(e) =>
                 setAction({
@@ -121,11 +121,11 @@ export function StageAutomationsDialog({
               }
             />
             <span className="text-sm text-muted-foreground">
-              {t("leads.settings_follow_up_days")}
+              {t("crm.settings_follow_up_days")}
             </span>
           </div>
         )}
-        <p className="text-xs text-muted-foreground">{t("leads.action_follow_up_hint")}</p>
+        <p className="text-xs text-muted-foreground">{t("crm.action_follow_up_hint")}</p>
       </div>
     </div>
   );
@@ -135,8 +135,8 @@ export function StageAutomationsDialog({
       id="action-customer"
       checked={stage.actions.make_customer}
       onChange={(v) => setAction({ make_customer: v })}
-      label={t("leads.action_make_customer")}
-      hint={t("leads.action_make_customer_hint")}
+      label={t("crm.action_make_customer")}
+      hint={t("crm.action_make_customer_hint")}
     />
   );
 
@@ -145,44 +145,44 @@ export function StageAutomationsDialog({
       {/* Only the middle scrolls, so the title and Save stay in view. */}
       <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{t("leads.auto_title", { stage: name })}</DialogTitle>
-          <DialogDescription>{t(`leads.auto_role_${role}`)}</DialogDescription>
+          <DialogTitle>{t("crm.auto_title", { stage: name })}</DialogTitle>
+          <DialogDescription>{t(`crm.auto_role_${role}`)}</DialogDescription>
         </DialogHeader>
 
         <div className="-mx-4 min-h-0 flex-1 overflow-y-auto px-4">
           <div className="grid gap-6 md:grid-cols-2">
             <section className="space-y-3">
-              <h3 className="text-sm font-medium">{t("leads.auto_move_here", { stage: name })}</h3>
+              <h3 className="text-sm font-medium">{t("crm.auto_move_here", { stage: name })}</h3>
               {role === "first" ? (
                 <p className="text-sm text-muted-foreground">
-                  {t("leads.auto_first_stage", { stage: name })}
+                  {t("crm.auto_first_stage", { stage: name })}
                 </p>
               ) : events.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t("leads.auto_no_events")}</p>
+                <p className="text-sm text-muted-foreground">{t("crm.auto_no_events")}</p>
               ) : (
                 <>
                   <Select value={trigger ?? MANUAL} onValueChange={(v) => v && setTrigger(v)}>
                     <SelectTrigger
                       className="w-full"
-                      aria-label={t("leads.auto_move_here", { stage: name })}
+                      aria-label={t("crm.auto_move_here", { stage: name })}
                     >
                       <SelectValue>
-                        {trigger ? t(`leads.event_${trigger}`) : t("leads.auto_manual")}
+                        {trigger ? t(`crm.event_${trigger}`) : t("crm.auto_manual")}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={MANUAL}>{t("leads.auto_manual")}</SelectItem>
+                      <SelectItem value={MANUAL}>{t("crm.auto_manual")}</SelectItem>
                       {events.map((e) => (
                         <SelectItem key={e} value={e}>
-                          {t(`leads.event_${e}`)}
+                          {t(`crm.event_${e}`)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     {trigger
-                      ? t(`leads.event_${trigger}_hint`)
-                      : t("leads.auto_manual_hint", {
+                      ? t(`crm.event_${trigger}_hint`)
+                      : t("crm.auto_manual_hint", {
                           stage: firstStage ? stageLabel(firstStage.id) : "",
                         })}
                   </p>
@@ -191,9 +191,9 @@ export function StageAutomationsDialog({
             </section>
 
             <section className="space-y-3 border-t pt-4 md:border-t-0 md:border-l md:pt-0 md:pl-6">
-              <h3 className="text-sm font-medium">{t("leads.auto_on_arrival", { stage: name })}</h3>
+              <h3 className="text-sm font-medium">{t("crm.auto_on_arrival", { stage: name })}</h3>
               {role === "lost" && (
-                <p className="text-sm text-muted-foreground">{t("leads.auto_lost_no_actions")}</p>
+                <p className="text-sm text-muted-foreground">{t("crm.auto_lost_no_actions")}</p>
               )}
               {role === "first" && followUp}
               {role === "middle" && (
@@ -209,9 +209,9 @@ export function StageAutomationsDialog({
                     id="action-project"
                     checked={stage.actions.create_project}
                     onChange={(v) => setAction({ create_project: v })}
-                    label={t("leads.action_create_project")}
-                    hint={`${t("leads.action_create_project_hint")}${
-                      timeTrackingOn ? "" : ` ${t("leads.auto_needs_time_tracking")}`
+                    label={t("crm.action_create_project")}
+                    hint={`${t("crm.action_create_project_hint")}${
+                      timeTrackingOn ? "" : ` ${t("crm.auto_needs_time_tracking")}`
                     }`}
                   />
                 </>

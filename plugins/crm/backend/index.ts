@@ -1,5 +1,5 @@
-// Leads plugin: a simple sales list with stages and follow-up dates that turns
-// a lead into a customer and a quote. Mounted at /api/v1/plugins/leads.
+// CRM plugin: a simple sales list with stages and follow-up dates that turns
+// a lead into a customer and a quote. Mounted at /api/v1/plugins/crm.
 // Leads are prospective customers, so access follows the core customers
 // permissions.
 
@@ -9,15 +9,15 @@ import { buildCsv, csvHeaders } from "@inkvoice/backend/utils/csv";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  getLeadsConfig,
+  CrmConfigError,
+  getCrmConfig,
   LEAD_EVENTS,
-  LeadsConfigError,
   MAX_OPEN_STAGES,
   STAGE_COLORS,
-  saveLeadsConfig,
+  saveCrmConfig,
   stageName,
 } from "./config";
-import { leadsMigrations } from "./migrations";
+import { crmMigrations } from "./migrations";
 import * as svc from "./service";
 
 const routes = new Hono();
@@ -37,7 +37,7 @@ const leadSchema = z.object({
   company: optionalText(255),
   email: z.string().email().nullable().optional().or(z.literal("")),
   phone: optionalText(50),
-  // Built-in source keys or the business's own (see Leads settings).
+  // Built-in source keys or the business's own (see CRM settings).
   source: optionalText(50),
   value: z.number().nonnegative().nullable().optional(),
   // Must be one of the business's stages (checked in the handler).
@@ -89,9 +89,7 @@ function ctxFrom(today: string | undefined): svc.Context {
 
 // Everyone who can see leads needs the stage names and sources; only admins
 // change them, the same as switching the plugin on or off.
-routes.get("/settings", requirePermission("customers", "read"), (c) =>
-  c.json(ok(getLeadsConfig())),
-);
+routes.get("/settings", requirePermission("customers", "read"), (c) => c.json(ok(getCrmConfig())));
 
 routes.put("/settings", async (c) => {
   const user = c.get("user") as { is_admin?: boolean } | undefined;
@@ -104,9 +102,9 @@ routes.put("/settings", async (c) => {
     );
   }
   try {
-    return c.json(ok(saveLeadsConfig(parsed.data)));
+    return c.json(ok(saveCrmConfig(parsed.data)));
   } catch (err) {
-    if (err instanceof LeadsConfigError) {
+    if (err instanceof CrmConfigError) {
       return c.json({ success: false, error: err.message }, 409);
     }
     throw err;
@@ -131,7 +129,7 @@ routes.get("/leads", requirePermission("customers", "read"), (c) => {
 });
 
 routes.get("/leads/export", requirePermission("customers", "export"), (c) => {
-  const config = getLeadsConfig();
+  const config = getCrmConfig();
   const rows = svc
     .listLeads(filtersFrom(c), ctxFrom(c.req.query("today")))
     .map((l) => ({ ...l, stage: stageName(config, l.stage) }));
@@ -208,13 +206,13 @@ routes.post(
 );
 
 registerBackendPlugin({
-  id: "leads",
-  version: "1.2.0",
+  id: "crm",
+  version: "2.0.0",
   routes,
-  migrations: leadsMigrations,
+  migrations: crmMigrations,
   listing: {
-    name: "Leads",
-    tagline: "Track potential customers from first contact to a won quote.",
+    name: "CRM",
+    tagline: "Track leads from first contact to a won deal, in your own pipeline.",
     description:
       "Keep a list of leads with where they came from, an estimated value and a next\nfollow-up date. Shape the pipeline with your own stages, let quotes and invoices\nmove leads along, and turn a lead into a customer and a quote in one click.\n",
     icon: "Target",

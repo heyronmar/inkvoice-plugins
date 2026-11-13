@@ -1,4 +1,4 @@
-// Leads settings, edited on the plugin's page under Settings → Plugins and on
+// CRM settings, edited on the plugin's page under Settings → Plugins and on
 // the board. Stored as one JSON value in the settings KV store. Reads always
 // return a complete, valid config: missing or unknown parts fall back to the
 // defaults, and automation rules that contradict each other are dropped.
@@ -99,7 +99,7 @@ export interface StageSetting {
   actions: StageActions;
 }
 
-export interface LeadsConfig {
+export interface CrmConfig {
   /** Open stages in board order, then Won, then Lost. */
   stages: StageSetting[];
   sources: string[];
@@ -107,7 +107,7 @@ export interface LeadsConfig {
   triggers: Partial<Record<LeadEvent, string>>;
 }
 
-const KEY = "leads_settings";
+const KEY = "crm_settings";
 
 const DEFAULT_COLORS: Record<string, StageColor> = {
   new: "sky",
@@ -141,7 +141,7 @@ const noActions = (): StageActions => ({
   create_project: false,
 });
 
-export function defaultLeadsConfig(): LeadsConfig {
+export function defaultCrmConfig(): CrmConfig {
   return {
     stages: [...DEFAULT_OPEN_STAGES, ...CLOSED_STAGES].map((id) => ({
       id,
@@ -164,8 +164,8 @@ export function defaultLeadsConfig(): LeadsConfig {
 function orderTriggers(
   stages: StageSetting[],
   raw: Partial<Record<string, unknown>>,
-): LeadsConfig["triggers"] {
-  const triggers: LeadsConfig["triggers"] = {};
+): CrmConfig["triggers"] {
+  const triggers: CrmConfig["triggers"] = {};
   let last = -1;
   for (const stage of stages) {
     const role = stageRole(stages, stage.id);
@@ -206,7 +206,7 @@ interface LegacyConfig {
   };
 }
 
-function fromLegacy(input: LegacyConfig, stages: StageSetting[]): LeadsConfig["triggers"] {
+function fromLegacy(input: LegacyConfig, stages: StageSetting[]): CrmConfig["triggers"] {
   const a = input.automations ?? {};
   const days = cleanDays(input.follow_up_days);
   for (const s of stages) {
@@ -214,15 +214,15 @@ function fromLegacy(input: LegacyConfig, stages: StageSetting[]): LeadsConfig["t
     if (days && !isClosed(s.id) && s.id !== "new") s.actions.follow_up_days = days;
     if (s.id === "won" && a.project_on_won) s.actions.create_project = true;
   }
-  const triggers: LeadsConfig["triggers"] = { quote_created: "quoted" };
+  const triggers: CrmConfig["triggers"] = { quote_created: "quoted" };
   if (a.won_on_accept !== false) triggers.quote_accepted = "won";
   if (a.lost_on_decline) triggers.quote_declined = "lost";
   if (a.contacted_on_follow_up) triggers.follow_up_set = "contacted";
   return triggers;
 }
 
-export function normalise(input: Partial<LeadsConfig> & LegacyConfig): LeadsConfig {
-  const base = defaultLeadsConfig();
+export function normalise(input: Partial<CrmConfig> & LegacyConfig): CrmConfig {
+  const base = defaultCrmConfig();
   const saved = new Map(
     (Array.isArray(input.stages) ? input.stages : base.stages).map((s) => [s.id, s]),
   );
@@ -260,33 +260,33 @@ export function normalise(input: Partial<LeadsConfig> & LegacyConfig): LeadsConf
   return { stages, sources, triggers };
 }
 
-export function getLeadsConfig(): LeadsConfig {
+export function getCrmConfig(): CrmConfig {
   const raw = getSetting(KEY);
-  if (!raw) return defaultLeadsConfig();
+  if (!raw) return defaultCrmConfig();
   try {
     return normalise(JSON.parse(raw));
   } catch {
-    return defaultLeadsConfig();
+    return defaultCrmConfig();
   }
 }
 
-export class LeadsConfigError extends Error {}
+export class CrmConfigError extends Error {}
 
 /**
  * Save the settings. A stage can only be removed once it's empty, so no lead
  * is ever left in a stage that no longer exists.
  */
-export function saveLeadsConfig(input: Partial<LeadsConfig>): LeadsConfig {
+export function saveCrmConfig(input: Partial<CrmConfig>): CrmConfig {
   const config = normalise(input);
   const kept = new Set(config.stages.map((s) => s.id));
   const orphans = getDb()
-    .query("SELECT stage, COUNT(*) AS n FROM ld_leads GROUP BY stage")
+    .query("SELECT stage, COUNT(*) AS n FROM crm_leads GROUP BY stage")
     .all() as { stage: string; n: number }[];
   const blocked = orphans.filter((o) => !kept.has(o.stage));
   if (blocked.length > 0) {
-    const current = getLeadsConfig();
+    const current = getCrmConfig();
     const names = blocked.map((o) => `${stageName(current, o.stage)} (${o.n})`);
-    throw new LeadsConfigError(
+    throw new CrmConfigError(
       `Move the leads out of these stages before removing them: ${names.join(", ")}`,
     );
   }
@@ -294,10 +294,10 @@ export function saveLeadsConfig(input: Partial<LeadsConfig>): LeadsConfig {
   return config;
 }
 
-export function stageName(config: LeadsConfig, id: string): string {
+export function stageName(config: CrmConfig, id: string): string {
   return config.stages.find((s) => s.id === id)?.label || DEFAULT_NAMES[id] || id;
 }
 
-export function getStage(config: LeadsConfig, id: string): StageSetting | undefined {
+export function getStage(config: CrmConfig, id: string): StageSetting | undefined {
   return config.stages.find((s) => s.id === id);
 }

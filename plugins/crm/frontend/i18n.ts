@@ -1,14 +1,14 @@
-// Leads UI strings, merged into the OSS dictionaries at import time.
+// CRM UI strings, merged into the OSS dictionaries at import time.
 // Languages without an entry fall back to English.
 
 import { registerTranslations } from "@/i18n";
 
 registerTranslations("en", {
-  leads: {
-    nav: "Leads",
-    name: "Leads",
-    description: "Track potential customers from first contact to a won quote.",
-    title: "Leads",
+  crm: {
+    nav: "CRM",
+    name: "CRM",
+    description: "Track leads from first contact to a won deal, in your own pipeline.",
+    title: "CRM",
     add_lead: "Add lead",
     edit_lead: "Edit lead",
     search_placeholder: "Search leads...",
@@ -55,7 +55,7 @@ registerTranslations("en", {
     follow_ups_due: "{{count}} follow-ups due",
     view_list: "List view",
     view_board: "Board view",
-    settings_saved: "Leads settings saved",
+    settings_saved: "CRM settings saved",
     settings_stages: "Pipeline stages",
     settings_stages_hint:
       "Add, rename, colour, reorder or hide stages, and set what each one does with ⚡. A hidden stage still shows while leads are in it; a stage can be removed once it's empty.",
@@ -125,11 +125,12 @@ registerTranslations("en", {
 });
 
 registerTranslations("tr", {
-  leads: {
-    nav: "Potansiyel Müşteriler",
-    name: "Potansiyel Müşteriler",
-    description: "Potansiyel müşterileri ilk temastan kabul edilen teklife kadar takip edin.",
-    title: "Potansiyel Müşteriler",
+  crm: {
+    nav: "CRM",
+    name: "CRM",
+    description:
+      "Potansiyel müşterileri ilk temastan kazanılan işe kadar kendi sürecinizde takip edin.",
+    title: "CRM",
     add_lead: "Potansiyel müşteri ekle",
     edit_lead: "Potansiyel müşteriyi düzenle",
     search_placeholder: "Ara...",

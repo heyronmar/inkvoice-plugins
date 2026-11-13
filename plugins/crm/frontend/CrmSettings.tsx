@@ -1,4 +1,4 @@
-// Leads settings, shown on the plugin's page under Settings → Plugins while the
+// CRM settings, shown on the plugin's page under Settings → Plugins while the
 // plugin is on: the pipeline's stages (add, remove, reorder, rename, colour,
 // hide, and each stage's automations) and the source list.
 
@@ -32,9 +32,9 @@ import { Hint, TooltipProvider } from "@/components/ui/tooltip";
 import { useTranslation } from "@/i18n";
 import { cn } from "@/lib/utils";
 import {
+  type CrmConfig,
+  crmApi,
   isClosed,
-  type LeadsConfig,
-  leadsApi,
   MAX_OPEN_STAGES,
   STAGE_COLORS,
   type StageColor,
@@ -45,15 +45,15 @@ import {
   newStageId,
   STAGE_SWATCHES,
   tidyTriggers,
+  useCrmConfig,
   useLeadLabels,
-  useLeadsConfig,
 } from "./config";
 import { StageAutomationsDialog } from "./StageAutomations";
 
-export default function LeadsSettings() {
+export default function CrmSettings() {
   const { t } = useTranslation();
-  const { config: saved, setConfig: setSaved, loaded } = useLeadsConfig();
-  const [draft, setDraft] = useState<LeadsConfig>(saved);
+  const { config: saved, setConfig: setSaved, loaded } = useCrmConfig();
+  const [draft, setDraft] = useState<CrmConfig>(saved);
   const [newSource, setNewSource] = useState("");
   const [saving, setSaving] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -65,7 +65,7 @@ export default function LeadsSettings() {
   // removed once it's empty.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refetch when the saved settings change
   useEffect(() => {
-    leadsApi
+    crmApi
       .list({})
       .then((res) => setCounts(res.data.counts))
       .catch(() => {});
@@ -112,7 +112,7 @@ export default function LeadsSettings() {
       JSON.stringify(tidy.triggers) !== JSON.stringify(kept) ||
       JSON.stringify(tidy.stages.map((s) => s.actions)) !==
         JSON.stringify(stages.map((s) => s.actions));
-    if (changed) toast.info(t("leads.settings_rules_adjusted"));
+    if (changed) toast.info(t("crm.settings_rules_adjusted"));
     setDraft(tidy);
   };
 
@@ -139,9 +139,9 @@ export default function LeadsSettings() {
   const save = async () => {
     setSaving(true);
     try {
-      const res = await leadsApi.saveSettings(draft);
+      const res = await crmApi.saveSettings(draft);
       setSaved(res.data);
-      toast.success(t("leads.settings_saved"));
+      toast.success(t("crm.settings_saved"));
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -162,7 +162,7 @@ export default function LeadsSettings() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        <Section title={t("leads.settings_stages")} hint={t("leads.settings_stages_hint")}>
+        <Section title={t("crm.settings_stages")} hint={t("crm.settings_stages_hint")}>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={open.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
@@ -179,10 +179,10 @@ export default function LeadsSettings() {
           </DndContext>
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="outline" onClick={addStage} disabled={atLimit}>
-              <Plus className="h-4 w-4" /> {t("leads.settings_add_stage")}
+              <Plus className="h-4 w-4" /> {t("crm.settings_add_stage")}
             </Button>
             <span className="text-xs text-muted-foreground">
-              {t("leads.settings_stage_limit", {
+              {t("crm.settings_stage_limit", {
                 count: String(open.length),
                 max: String(MAX_OPEN_STAGES),
               })}
@@ -195,7 +195,7 @@ export default function LeadsSettings() {
           </div>
         </Section>
 
-        <Section title={t("leads.settings_sources")} hint={t("leads.settings_sources_hint")}>
+        <Section title={t("crm.settings_sources")} hint={t("crm.settings_sources_hint")}>
           <div className="flex flex-wrap gap-2">
             {draft.sources.map((s) => (
               <Badge key={s} variant="secondary" className="h-7 gap-1 pr-1 text-sm font-normal">
@@ -217,8 +217,8 @@ export default function LeadsSettings() {
             <Input
               value={newSource}
               maxLength={50}
-              placeholder={t("leads.settings_source_placeholder")}
-              aria-label={t("leads.settings_source_placeholder")}
+              placeholder={t("crm.settings_source_placeholder")}
+              aria-label={t("crm.settings_source_placeholder")}
               onChange={(e) => setNewSource(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -228,14 +228,14 @@ export default function LeadsSettings() {
               }}
             />
             <Button variant="outline" onClick={addSource} disabled={!newSource.trim()}>
-              <Plus className="h-4 w-4" /> {t("leads.settings_add")}
+              <Plus className="h-4 w-4" /> {t("crm.settings_add")}
             </Button>
           </div>
         </Section>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           {unnamed && (
-            <span className="text-xs text-destructive">{t("leads.settings_stage_needs_name")}</span>
+            <span className="text-xs text-destructive">{t("crm.settings_stage_needs_name")}</span>
           )}
           <Button variant="outline" onClick={() => setDraft(saved)} disabled={!dirty || saving}>
             {t("common.cancel")}
@@ -293,7 +293,7 @@ function StageRow({
     disabled: locked,
   });
   const custom = stage.id.startsWith("c_");
-  const defaultName = custom ? t("leads.settings_stage_name") : t(`leads.stage_${stage.id}`);
+  const defaultName = custom ? t("crm.settings_stage_name") : t(`crm.stage_${stage.id}`);
   const name = stage.label || defaultName;
   return (
     <div
@@ -306,15 +306,15 @@ function StageRow({
     >
       {locked ? (
         <span className="flex h-7 w-7 items-center justify-center text-muted-foreground">
-          <Lock className="h-4 w-4" aria-label={t("leads.settings_stage_locked")} />
+          <Lock className="h-4 w-4" aria-label={t("crm.settings_stage_locked")} />
         </span>
       ) : (
-        <Hint label={t("leads.settings_reorder")}>
+        <Hint label={t("crm.settings_reorder")}>
           <Button
             variant="ghost"
             size="icon-sm"
             className="cursor-grab touch-none active:cursor-grabbing"
-            aria-label={`${t("leads.settings_reorder")}: ${name}`}
+            aria-label={`${t("crm.settings_reorder")}: ${name}`}
             {...attributes}
             {...listeners}
           >
@@ -324,34 +324,34 @@ function StageRow({
       )}
       <ColorPicker
         value={stage.color}
-        label={`${t("leads.settings_stage_color")}: ${name}`}
+        label={`${t("crm.settings_stage_color")}: ${name}`}
         onChange={(color) => onChange({ color })}
       />
       <Input
         value={stage.label ?? ""}
         maxLength={40}
         placeholder={defaultName}
-        aria-label={`${t("leads.settings_stage_name")}: ${name}`}
+        aria-label={`${t("crm.settings_stage_name")}: ${name}`}
         aria-invalid={custom && !stage.label?.trim()}
         className="min-w-0 flex-1 sm:max-w-xs"
         onChange={(e) => onChange({ label: e.target.value || (custom ? "" : null) })}
       />
       <span className="text-xs text-muted-foreground tabular-nums">
-        {t("leads.settings_stage_leads", { count: String(leads) })}
+        {t("crm.settings_stage_leads", { count: String(leads) })}
       </span>
       <div className="ml-auto flex items-center gap-1">
         <Hint
           label={
             automations > 0
-              ? t("leads.automations_count", { count: String(automations) })
-              : t("leads.automations_set")
+              ? t("crm.automations_count", { count: String(automations) })
+              : t("crm.automations_set")
           }
         >
           <Button
             variant="ghost"
             size="sm"
             onClick={onAutomate}
-            aria-label={`${t("leads.automations")}: ${name}`}
+            aria-label={`${t("crm.automations")}: ${name}`}
           >
             <Zap className={cn("h-4 w-4", automations > 0 && "fill-amber-400 text-amber-500")} />
             {automations > 0 && <span className="tabular-nums">{automations}</span>}
@@ -359,7 +359,7 @@ function StageRow({
         </Hint>
         {locked ? (
           <span className="px-2 text-xs text-muted-foreground">
-            {t("leads.settings_stage_locked")}
+            {t("crm.settings_stage_locked")}
           </span>
         ) : (
           <>
@@ -367,7 +367,7 @@ function StageRow({
               htmlFor={`stage-${stage.id}`}
               className="ml-1 text-xs font-normal text-muted-foreground"
             >
-              {t("leads.settings_stage_show")}
+              {t("crm.settings_stage_show")}
             </Label>
             <Switch
               id={`stage-${stage.id}`}
@@ -378,10 +378,10 @@ function StageRow({
               disabled={!onRemove || leads > 0}
               label={
                 leads > 0
-                  ? t("leads.settings_stage_not_empty")
+                  ? t("crm.settings_stage_not_empty")
                   : !onRemove
-                    ? t("leads.settings_stage_keep_one")
-                    : t("leads.settings_stage_delete")
+                    ? t("crm.settings_stage_keep_one")
+                    : t("crm.settings_stage_delete")
               }
             >
               <Button
@@ -414,7 +414,7 @@ function ColorPicker({
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Hint label={t("leads.settings_stage_color")}>
+      <Hint label={t("crm.settings_stage_color")}>
         <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} />}>
           <span className={cn("h-4 w-4 rounded-full", STAGE_SWATCHES[value])} />
         </PopoverTrigger>

@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import { createApp } from "@inkvoice/backend/app";
@@ -12,7 +13,8 @@ import { setPluginEnabled } from "@inkvoice/backend/plugins/settings";
 import { getCustomer } from "@inkvoice/backend/services/customer.service";
 import { acceptQuote, createQuote, rejectQuote } from "@inkvoice/backend/services/quote.service";
 import { resetEnvCache } from "@inkvoice/backend/utils/env";
-import { defaultLeadsConfig, saveLeadsConfig } from "../backend/config";
+import { defaultCrmConfig, saveCrmConfig } from "../backend/config";
+import { crmMigrations } from "../backend/migrations";
 import {
   convertLead,
   countByStage,
@@ -24,14 +26,14 @@ import {
   updateLead,
 } from "../backend/service";
 
-const TEST_DB = "./data/test-leads.db";
+const TEST_DB = "./data/test-crm.db";
 let app: Hono;
 let token: string;
 
 beforeAll(async () => {
   process.env.DATABASE_PATH = TEST_DB;
   process.env.ADMIN_USER = "admin";
-  process.env.ADMIN_PASS = "leadstestpass";
+  process.env.ADMIN_PASS = "crmtestpass";
   process.env.JWT_SECRET = "test-secret-key-that-is-at-least-32-chars-long";
   process.env.RATE_LIMIT_ENABLED = "false";
   resetEnvCache();
@@ -43,7 +45,7 @@ beforeAll(async () => {
   const res = await app.request("/api/v1/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "admin", password: "leadstestpass" }),
+    body: JSON.stringify({ username: "admin", password: "crmtestpass" }),
   });
   token = ((await res.json()) as any).data.token as string;
 });
@@ -58,7 +60,7 @@ afterAll(() => {
 });
 
 function call(path: string, opts: RequestInit = {}) {
-  return app.request(`/api/v1/plugins/leads${path}`, {
+  return app.request(`/api/v1/plugins/crm${path}`, {
     ...opts,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
   });
@@ -123,12 +125,12 @@ describe("leads service", () => {
 
 describe("leads routes", () => {
   test("hidden while the plugin is off", async () => {
-    setPluginEnabled("leads", false);
+    setPluginEnabled("crm", false);
     expect((await call("/leads")).status).toBe(404);
   });
 
   test("create, filter, export and quote once enabled", async () => {
-    setPluginEnabled("leads", true);
+    setPluginEnabled("crm", true);
     const created = await call("/leads", {
       method: "POST",
       body: JSON.stringify({ name: "Hemi", source: "referral", value: 900, email: "" }),
@@ -163,10 +165,10 @@ describe("leads routes", () => {
     });
     const body = (await res.json()) as any;
     const items = body.data.plugins ?? body.data;
-    const leads = items.find((p: any) => p.id === "leads");
-    expect(leads.name).toBe("Leads");
-    expect(leads.installed).toBe(true);
-    expect(leads.enabled).toBe(true);
+    const crm = items.find((p: any) => p.id === "crm");
+    expect(crm.name).toBe("CRM");
+    expect(crm.installed).toBe(true);
+    expect(crm.enabled).toBe(true);
   });
 });
 
@@ -178,28 +180,28 @@ function quoteFor(customer_id: string) {
   } as any);
 }
 
-type Config = ReturnType<typeof defaultLeadsConfig>;
+type Config = ReturnType<typeof defaultCrmConfig>;
 
 /** Default settings with some stages' actions and triggers changed. */
 function configure(change: (c: Config) => void): Config {
-  const config = defaultLeadsConfig();
+  const config = defaultCrmConfig();
   change(config);
-  return saveLeadsConfig(config);
+  return saveCrmConfig(config);
 }
 
 const stage = (c: Config, id: string) => c.stages.find((s) => s.id === id)!;
 
 describe("leads settings", () => {
   // Each test shapes its own pipeline; leads left over would block removing a stage.
-  beforeEach(() => getDb().run("DELETE FROM ld_leads"));
+  beforeEach(() => getDb().run("DELETE FROM crm_leads"));
   afterAll(() => {
-    getDb().run("DELETE FROM ld_leads");
-    saveLeadsConfig(defaultLeadsConfig());
+    getDb().run("DELETE FROM crm_leads");
+    saveCrmConfig(defaultCrmConfig());
   });
 
   test("custom stages: Won and Lost stay last, names are required, sources de-duplicated", () => {
-    const base = defaultLeadsConfig();
-    const config = saveLeadsConfig({
+    const base = defaultCrmConfig();
+    const config = saveCrmConfig({
       ...base,
       stages: [
         { ...stage(base, "won"), label: "Signed", hidden: true },
@@ -259,7 +261,7 @@ describe("leads settings", () => {
   });
 
   test("old settings carry over", () => {
-    const config = saveLeadsConfig({
+    const config = saveCrmConfig({
       stages: [{ id: "contacted", label: "Talking", hidden: false }],
       follow_up_days: 4,
       automations: {
@@ -304,21 +306,21 @@ describe("leads settings", () => {
     expect(stage(config, "won").actions.make_customer).toBe(true);
 
     // Moving Quoted before Contacted puts "accepted" ahead of "created": dropped.
-    const reordered = defaultLeadsConfig();
+    const reordered = defaultCrmConfig();
     reordered.stages = ["new", "quoted", "contacted", "won", "lost"].map((id) => stage(config, id));
     reordered.triggers = config.triggers;
-    expect(saveLeadsConfig(reordered).triggers).toEqual({
+    expect(saveCrmConfig(reordered).triggers).toEqual({
       quote_accepted: "quoted",
       invoice_created: "won",
     });
   });
 
   test("a stage with leads in it can't be removed", () => {
-    saveLeadsConfig(defaultLeadsConfig());
+    saveCrmConfig(defaultCrmConfig());
     const lead = createLead({ name: "Pita", stage: "contacted" });
-    const without = defaultLeadsConfig();
+    const without = defaultCrmConfig();
     without.stages = without.stages.filter((s) => s.id !== "contacted");
-    expect(() => saveLeadsConfig(without)).toThrow(/Contacted \(\d+\)/);
+    expect(() => saveCrmConfig(without)).toThrow(/Contacted \(\d+\)/);
     deleteLead(lead.id);
   });
 
@@ -351,7 +353,7 @@ describe("leads settings", () => {
   });
 
   test("an event fires once: a lead moved by hand isn't pulled back", () => {
-    saveLeadsConfig(defaultLeadsConfig());
+    saveCrmConfig(defaultCrmConfig());
     const lead = createLead({ name: "Hine" });
     const { customer_id } = startQuote(lead.id)!;
     quoteFor(customer_id);
@@ -444,18 +446,18 @@ describe("leads settings", () => {
   });
 
   test("leads from before the upgrade aren't moved by quotes they already had", () => {
-    saveLeadsConfig(defaultLeadsConfig());
+    saveCrmConfig(defaultCrmConfig());
     const lead = createLead({ name: "Old" });
     const { customer_id } = convertLead(lead.id)!;
     acceptQuote(quoteFor(customer_id).id);
-    getDb().run("UPDATE ld_leads SET events_seen = NULL WHERE id = ?", [lead.id]);
+    getDb().run("UPDATE crm_leads SET events_seen = NULL WHERE id = ?", [lead.id]);
     listLeads();
     expect(getLead(lead.id)!.stage).toBe("new");
   });
 
   test("settings routes: anyone with access reads, admins save, bad input is rejected", async () => {
-    saveLeadsConfig(defaultLeadsConfig());
-    setPluginEnabled("leads", true);
+    saveCrmConfig(defaultCrmConfig());
+    setPluginEnabled("crm", true);
     const read = (await (await call("/settings")).json()) as any;
     expect(read.data.stages).toHaveLength(5);
     const bad = await call("/settings", { method: "PUT", body: JSON.stringify({ sources: "x" }) });
@@ -480,5 +482,36 @@ describe("leads settings", () => {
       body: JSON.stringify({ name: "Kahu", source: "Trade show" }),
     });
     expect(custom.status).toBe(201);
+  });
+});
+
+describe("upgrade from Leads", () => {
+  test("takes over the Leads table, settings and on/off switch", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE plugin_schema_migrations (plugin_id TEXT, version INTEGER, name TEXT);
+      CREATE TABLE ld_leads (id TEXT PRIMARY KEY, name TEXT NOT NULL, stage TEXT,
+        next_follow_up TEXT, customer_id TEXT, quote_id TEXT);
+      CREATE INDEX idx_ld_leads_stage ON ld_leads(stage);
+      INSERT INTO ld_leads (id, name, stage) VALUES ('a1', 'Aroha', 'quoted');
+      INSERT INTO settings VALUES ('leads_settings', '{"sources":["Trade show"]}');
+      INSERT INTO settings VALUES ('enabled_plugins', '["time-tracker","leads"]');
+      INSERT INTO plugin_schema_migrations VALUES ('leads', 3, 'leads_quote_events');
+    `);
+    crmMigrations[0].up(db);
+
+    expect(db.query("SELECT name, stage FROM crm_leads").all()).toEqual([
+      { name: "Aroha", stage: "quoted" },
+    ]);
+    const tables = db.query("SELECT name FROM sqlite_master WHERE name LIKE '%ld_leads%'").all();
+    expect(tables).toEqual([]);
+    const setting = (key: string) =>
+      (db.query("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null)
+        ?.value;
+    expect(setting("crm_settings")).toBe('{"sources":["Trade show"]}');
+    expect(setting("leads_settings")).toBeUndefined();
+    expect(JSON.parse(setting("enabled_plugins")!)).toEqual(["time-tracker", "crm"]);
+    expect(db.query("SELECT * FROM plugin_schema_migrations").all()).toEqual([]);
   });
 });

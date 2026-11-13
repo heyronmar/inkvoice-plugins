@@ -62,8 +62,8 @@ import { useTranslation } from "@/i18n";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth.store";
 import { useSettingsStore } from "@/stores/settings.store";
-import { isClosed, type Lead, type LeadInput, type LeadsConfig, leadsApi } from "./api";
-import { automationCount, stageStyle, useLeadLabels, useLeadsConfig } from "./config";
+import { type CrmConfig, crmApi, isClosed, type Lead, type LeadInput } from "./api";
+import { automationCount, stageStyle, useCrmConfig, useLeadLabels } from "./config";
 import { StageAutomationsDialog } from "./StageAutomations";
 
 function todayIso(): string {
@@ -71,7 +71,7 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function LeadsPage() {
+export default function CrmPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const can = useCan();
@@ -81,12 +81,12 @@ export default function LeadsPage() {
   const canQuote = canCreate && can("invoices", "create");
   const settings = useSettingsStore((s) => s.settings);
   const currency = settings.base_currency || settings.currency || "USD";
-  const { config, setConfig } = useLeadsConfig();
+  const { config, setConfig } = useCrmConfig();
   const { stageLabel, sourceLabel } = useLeadLabels(config);
   const isAdmin = useAuthStore((s) => !!s.user?.is_admin);
   const [automating, setAutomating] = useState<string | null>(null);
 
-  const [view, setView] = usePersistentState<"list" | "board">("inkvoice-leads-view", "list");
+  const [view, setView] = usePersistentState<"list" | "board">("inkvoice-crm-view", "list");
   const [stage, setStage] = useState<string>("all");
   // The board shows every stage as a column, so the stage tab does not apply.
   const stageFilter = view === "board" || stage === "all" ? undefined : stage;
@@ -107,7 +107,7 @@ export default function LeadsPage() {
 
   const fetchLeads = useCallback(async () => {
     try {
-      const res = await leadsApi.list({
+      const res = await crmApi.list({
         stage: stageFilter,
         search: search || undefined,
         from: dateRange.from,
@@ -145,7 +145,7 @@ export default function LeadsPage() {
     // The stage's arrival actions (follow-up date, …) run on the server.
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, stage: next } : l)));
     try {
-      await leadsApi.update(lead.id, { stage: next });
+      await crmApi.update(lead.id, { stage: next });
       fetchLeads();
     } catch (e) {
       toast.error((e as Error).message);
@@ -154,8 +154,8 @@ export default function LeadsPage() {
 
   const convert = async (lead: Lead) => {
     try {
-      await leadsApi.convert(lead.id);
-      toast.success(t("leads.converted"));
+      await crmApi.convert(lead.id);
+      toast.success(t("crm.converted"));
       fetchLeads();
     } catch (e) {
       toast.error((e as Error).message);
@@ -164,18 +164,18 @@ export default function LeadsPage() {
 
   const createQuote = async (lead: Lead) => {
     try {
-      const res = await leadsApi.startQuote(lead.id);
+      const res = await crmApi.startQuote(lead.id);
       navigate(`/quotes/new?customer_id=${res.data.customer_id}`);
     } catch (e) {
       toast.error((e as Error).message);
     }
   };
 
-  const saveAutomations = async (next: LeadsConfig) => {
+  const saveAutomations = async (next: CrmConfig) => {
     try {
-      const res = await leadsApi.saveSettings(next);
+      const res = await crmApi.saveSettings(next);
       setConfig(res.data);
-      toast.success(t("leads.settings_saved"));
+      toast.success(t("crm.settings_saved"));
       fetchLeads();
     } catch (e) {
       toast.error((e as Error).message);
@@ -186,8 +186,8 @@ export default function LeadsPage() {
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
-      await leadsApi.remove(deleteId);
-      toast.success(t("leads.deleted"));
+      await crmApi.remove(deleteId);
+      toast.success(t("crm.deleted"));
       fetchLeads();
     } catch (e) {
       toast.error((e as Error).message);
@@ -213,18 +213,18 @@ export default function LeadsPage() {
       <>
         {l.quote_id && l.quote_number
           ? // It already has a quote, so open that rather than starting another.
-            action(t("leads.open_quote", { number: l.quote_number }), FileText, () =>
+            action(t("crm.open_quote", { number: l.quote_number }), FileText, () =>
               navigate(`/quotes/${l.quote_id}`),
             )
           : canQuote &&
             !isClosed(l.stage) &&
-            action(t("leads.create_quote"), FilePlus, () => createQuote(l))}
+            action(t("crm.create_quote"), FilePlus, () => createQuote(l))}
         {l.customer_id
-          ? action(t("leads.view_customer"), Users, () => navigate(`/customers/${l.customer_id}`))
+          ? action(t("crm.view_customer"), Users, () => navigate(`/customers/${l.customer_id}`))
           : canCreate &&
             // A lost lead isn't worth turning into a customer; Won still can be.
             l.stage !== "lost" &&
-            action(t("leads.convert"), UserPlus, () => convert(l))}
+            action(t("crm.convert"), UserPlus, () => convert(l))}
         {canEdit && action(t("common.edit"), Pencil, () => openEdit(l))}
         {canDelete && action(t("common.delete"), Trash2, () => setDeleteId(l.id))}
       </>
@@ -234,8 +234,8 @@ export default function LeadsPage() {
   const followUp = (l: Lead) =>
     l.next_follow_up ? (
       <span className={cn(isDue(l) && "font-medium text-destructive")}>
-        {l.next_follow_up === today ? t("leads.today") : formatDate(l.next_follow_up)}
-        {isDue(l) && l.next_follow_up < today && ` · ${t("leads.overdue")}`}
+        {l.next_follow_up === today ? t("crm.today") : formatDate(l.next_follow_up)}
+        {isDue(l) && l.next_follow_up < today && ` · ${t("crm.overdue")}`}
       </span>
     ) : null;
   const quoteChip = (l: Lead) =>
@@ -252,9 +252,9 @@ export default function LeadsPage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">{t("leads.title")}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{t("crm.title")}</h1>
             {dueCount > 0 && (
-              <Badge variant="destructive">{t("leads.follow_ups_due", { count: dueCount })}</Badge>
+              <Badge variant="destructive">{t("crm.follow_ups_due", { count: dueCount })}</Badge>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -262,7 +262,7 @@ export default function LeadsPage() {
             {can("customers", "export") && (
               <Button
                 variant="outline"
-                onClick={() => window.open(leadsApi.exportUrl(filters), "_blank")}
+                onClick={() => window.open(crmApi.exportUrl(filters), "_blank")}
               >
                 <Download className="h-4 w-4 mr-2" /> {t("common.export_csv")}
               </Button>
@@ -270,8 +270,8 @@ export default function LeadsPage() {
             <div className="inline-flex h-8 items-center gap-0.5 rounded-lg border border-border bg-background p-0.5">
               {(
                 [
-                  ["list", List, t("leads.view_list")],
-                  ["board", Kanban, t("leads.view_board")],
+                  ["list", List, t("crm.view_list")],
+                  ["board", Kanban, t("crm.view_board")],
                 ] as const
               ).map(([value, Icon, label]) => (
                 <Hint key={value} label={label}>
@@ -289,7 +289,7 @@ export default function LeadsPage() {
             </div>
             {canCreate && (
               <Button onClick={openNew}>
-                <Plus className="h-4 w-4 mr-2" /> {t("leads.add_lead")}
+                <Plus className="h-4 w-4 mr-2" /> {t("crm.add_lead")}
               </Button>
             )}
           </div>
@@ -300,7 +300,7 @@ export default function LeadsPage() {
             <Tabs value={stage} onValueChange={(v) => setStage(v as string)}>
               <TabsList>
                 <TabsTrigger value="all">
-                  {t("leads.tab_all")} <span className="ml-1 text-muted-foreground">{total}</span>
+                  {t("crm.tab_all")} <span className="ml-1 text-muted-foreground">{total}</span>
                 </TabsTrigger>
                 {stages.map((s) => (
                   <TabsTrigger key={s} value={s}>
@@ -314,7 +314,7 @@ export default function LeadsPage() {
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder={t("leads.search_placeholder")}
+              placeholder={t("crm.search_placeholder")}
               aria-label={t("common.search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -347,14 +347,14 @@ export default function LeadsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableCell className="font-medium text-sm">{t("leads.col_name")}</TableCell>
-                  <TableCell className="font-medium text-sm">{t("leads.col_contact")}</TableCell>
-                  <TableCell className="font-medium text-sm">{t("leads.col_source")}</TableCell>
+                  <TableCell className="font-medium text-sm">{t("crm.col_name")}</TableCell>
+                  <TableCell className="font-medium text-sm">{t("crm.col_contact")}</TableCell>
+                  <TableCell className="font-medium text-sm">{t("crm.col_source")}</TableCell>
                   <TableCell className="font-medium text-sm text-right">
-                    {t("leads.col_value")}
+                    {t("crm.col_value")}
                   </TableCell>
-                  <TableCell className="font-medium text-sm">{t("leads.col_stage")}</TableCell>
-                  <TableCell className="font-medium text-sm">{t("leads.col_follow_up")}</TableCell>
+                  <TableCell className="font-medium text-sm">{t("crm.col_stage")}</TableCell>
+                  <TableCell className="font-medium text-sm">{t("crm.col_follow_up")}</TableCell>
                   <TableCell className="w-[160px] font-medium text-sm text-muted-foreground">
                     {t("common.actions")}
                   </TableCell>
@@ -366,9 +366,9 @@ export default function LeadsPage() {
                     <TableCell colSpan={colCount} className="p-0">
                       <EmptyState
                         icon={Target}
-                        title={t("leads.empty_title")}
-                        description={t("leads.empty_description")}
-                        actionLabel={t("leads.add_lead")}
+                        title={t("crm.empty_title")}
+                        description={t("crm.empty_description")}
+                        actionLabel={t("crm.add_lead")}
                         onAction={canCreate ? openNew : undefined}
                       />
                     </TableCell>
@@ -412,7 +412,7 @@ export default function LeadsPage() {
                               "border-transparent font-medium",
                               stageStyle(config, l.stage),
                             )}
-                            aria-label={t("leads.col_stage")}
+                            aria-label={t("crm.col_stage")}
                           >
                             <SelectValue>{stageLabel(l.stage)}</SelectValue>
                           </SelectTrigger>
@@ -461,8 +461,8 @@ export default function LeadsPage() {
         <ConfirmDialog
           open={deleteId !== null}
           onOpenChange={(open) => !open && setDeleteId(null)}
-          title={t("leads.delete_title")}
-          description={t("leads.delete_description")}
+          title={t("crm.delete_title")}
+          description={t("crm.delete_description")}
           confirmLabel={t("common.delete")}
           variant="destructive"
           onConfirm={handleDelete}
@@ -482,7 +482,7 @@ function LeadDialog({
 }: {
   open: boolean;
   lead: Lead | null;
-  config: LeadsConfig;
+  config: CrmConfig;
   stages: string[];
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
@@ -530,9 +530,9 @@ function LeadDialog({
     };
     setSaving(true);
     try {
-      if (lead) await leadsApi.update(lead.id, input);
-      else await leadsApi.create(input);
-      toast.success(t("leads.saved"));
+      if (lead) await crmApi.update(lead.id, input);
+      else await crmApi.create(input);
+      toast.success(t("crm.saved"));
       onOpenChange(false);
       onSaved();
     } catch (e) {
@@ -558,26 +558,26 @@ function LeadDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{lead ? t("leads.edit_lead") : t("leads.add_lead")}</DialogTitle>
+          <DialogTitle>{lead ? t("crm.edit_lead") : t("crm.add_lead")}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {text("name", t("leads.field_name"))}
-          {text("company", t("leads.field_company"))}
-          {text("email", t("leads.field_email"), "email")}
-          {text("phone", t("leads.field_phone"), "tel")}
+          {text("name", t("crm.field_name"))}
+          {text("company", t("crm.field_company"))}
+          {text("email", t("crm.field_email"), "email")}
+          {text("phone", t("crm.field_phone"), "tel")}
           <div className="space-y-1">
-            <Label>{t("leads.field_source")}</Label>
+            <Label>{t("crm.field_source")}</Label>
             <Select
               value={form.source || "none"}
               onValueChange={(v) => set("source")(v === "none" || !v ? "" : v)}
             >
               <SelectTrigger className="w-full">
                 <SelectValue>
-                  {form.source ? sourceLabel(form.source) : t("leads.no_source")}
+                  {form.source ? sourceLabel(form.source) : t("crm.no_source")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">{t("leads.no_source")}</SelectItem>
+                <SelectItem value="none">{t("crm.no_source")}</SelectItem>
                 {sources.map((s) => (
                   <SelectItem key={s} value={s}>
                     {sourceLabel(s)}
@@ -586,9 +586,9 @@ function LeadDialog({
               </SelectContent>
             </Select>
           </div>
-          {text("value", t("leads.field_value"), "number")}
+          {text("value", t("crm.field_value"), "number")}
           <div className="space-y-1">
-            <Label>{t("leads.field_stage")}</Label>
+            <Label>{t("crm.field_stage")}</Label>
             <Select value={form.stage || firstStage} onValueChange={(v) => v && set("stage")(v)}>
               <SelectTrigger className="w-full">
                 <SelectValue>{stageLabel(form.stage || firstStage)}</SelectValue>
@@ -602,9 +602,9 @@ function LeadDialog({
               </SelectContent>
             </Select>
           </div>
-          {text("next_follow_up", t("leads.field_follow_up"), "date")}
+          {text("next_follow_up", t("crm.field_follow_up"), "date")}
           <div className="space-y-1 sm:col-span-2">
-            <Label htmlFor="lead-notes">{t("leads.field_notes")}</Label>
+            <Label htmlFor="lead-notes">{t("crm.field_notes")}</Label>
             <Textarea
               id="lead-notes"
               rows={3}
@@ -757,15 +757,15 @@ function BoardColumn({
             <Hint
               label={
                 automations > 0
-                  ? t("leads.automations_count", { count: String(automations) })
-                  : t("leads.automations_set")
+                  ? t("crm.automations_count", { count: String(automations) })
+                  : t("crm.automations_set")
               }
             >
               <Button
                 variant="ghost"
                 size="icon-xs"
                 onClick={onAutomate}
-                aria-label={`${t("leads.automations")}: ${title}`}
+                aria-label={`${t("crm.automations")}: ${title}`}
               >
                 <Zap className={cn(automations > 0 && "fill-amber-400 text-amber-500")} />
               </Button>

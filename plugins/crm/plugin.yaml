@@ -1,21 +1,23 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/pigontech/inkvoice-plugins/main/schema/plugin.schema.json
-id: leads
-name: Leads
-tagline: Track potential customers from first contact to a won deal.
+id: crm
+name: CRM
+tagline: Track leads from first contact to a won deal, in your own pipeline.
 description: |
   Keep a list of leads with where they came from, an estimated value and a next
   follow-up date, as a list or a board. Shape the pipeline with your own stages,
   let quotes and invoices move leads along, and turn a lead into a customer and
   a quote in one click.
 
-  Off by default. Leads live in the same database as your invoices.
+  Off by default. Leads live in the same database as your invoices. Called
+  "Leads" (id leads) before 2.0.0; upgrading carries leads, settings and the
+  on/off switch over.
 category: productivity
 status: available
 availability: oss
 requires_feature: null
 icon: Target
-docs: https://github.com/heyronmar/inkvoice-plugins/tree/main/plugins/leads
-source: https://github.com/heyronmar/inkvoice-plugins/tree/main/plugins/leads
+docs: https://github.com/heyronmar/inkvoice-plugins/tree/main/plugins/crm
+source: https://github.com/heyronmar/inkvoice-plugins/tree/main/plugins/crm
 versions:
   - version: "1.0.0"
     min_app: "0.3.3"
@@ -29,3 +31,7 @@ versions:
     min_app: "0.3.7"
     released: "2026-11-13"
     changelog: Your own stages (up to 8 plus Won and Lost) with per-stage automations; leads follow their quote.
+  - version: "2.0.0"
+    min_app: "0.3.7"
+    released: "2026-11-13"
+    changelog: Renamed from Leads to CRM (id crm, table crm_leads); existing leads, settings and the on/off switch carry over.

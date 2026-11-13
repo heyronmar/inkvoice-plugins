@@ -1,10 +1,10 @@
-// Typed client for the Leads plugin API (/api/v1/plugins/leads).
+// Typed client for the Leads plugin API (/api/v1/plugins/crm).
 
 import { pluginFetch } from "@/plugins/api";
 
-const BASE = "/plugins/leads";
+const BASE = "/plugins/crm";
 
-/** Built-in sources (translated labels). Businesses can add their own in Leads settings. */
+/** Built-in sources (translated labels). Businesses can add their own in CRM settings. */
 export const LEAD_SOURCES = ["website", "referral", "social", "phone", "email", "other"] as const;
 
 /** Won and Lost close a lead; they always exist and come last. */
@@ -53,7 +53,7 @@ export interface StageSetting {
   actions: StageActions;
 }
 
-export interface LeadsConfig {
+export interface CrmConfig {
   stages: StageSetting[];
   sources: string[];
   /** Which stage each event moves a lead to; an event belongs to one stage at most. */
@@ -118,7 +118,7 @@ function query(filters: LeadFilters): string {
   return qs ? `?${qs}` : "";
 }
 
-export const leadsApi = {
+export const crmApi = {
   list: (filters: LeadFilters) =>
     pluginFetch<{ data: { items: Lead[]; counts: Record<string, number> } }>(
       `${BASE}/leads${query(filters)}`,
@@ -139,9 +139,9 @@ export const leadsApi = {
     pluginFetch<{ data: { lead: Lead; customer_id: string } }>(`${BASE}/leads/${id}/convert`, {
       method: "POST",
     }),
-  getSettings: () => pluginFetch<{ data: LeadsConfig }>(`${BASE}/settings`),
-  saveSettings: (config: LeadsConfig) =>
-    pluginFetch<{ data: LeadsConfig }>(`${BASE}/settings`, {
+  getSettings: () => pluginFetch<{ data: CrmConfig }>(`${BASE}/settings`),
+  saveSettings: (config: CrmConfig) =>
+    pluginFetch<{ data: CrmConfig }>(`${BASE}/settings`, {
       method: "PUT",
       body: JSON.stringify(config),
     }),

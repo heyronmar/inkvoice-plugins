@@ -30,7 +30,7 @@ app's tsconfigs and Vite config carry the same ones):
 
 Rules that keep plugins safe to switch off:
 
-- Own tables only, prefixed (`ld_` for Leads), created by the plugin's
+- Own tables only, prefixed (`crm_` for CRM), created by the plugin's
   migrations. Read core tables if needed; never change them.
 - Talk to other plugins through their services, not their tables.
 - Routes live under `/api/v1/plugins/<id>` and return 404 while the plugin
@@ -55,9 +55,10 @@ When a plugin's code version changes, add a matching `versions` entry to its
 
 ## Plugins
 
-### Leads (`plugins/leads`)
+### CRM (`plugins/crm`)
 
-A simple CRM pipeline. Off by default; switch it on under
+A simple CRM pipeline for leads. Called "Leads" (id `leads`) before 2.0.0;
+upgrading carries leads, settings and the on/off switch over. Off by default; switch it on under
 Settings → Plugins.
 
 
