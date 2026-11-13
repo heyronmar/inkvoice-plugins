@@ -53,6 +53,7 @@ const configSchema = z.object({
       z.object({
         id: z.string().regex(/^(new|contacted|quoted|won|lost|c_[a-z0-9]{4,16})$/),
         label: z.string().max(40).nullable(),
+        description: z.string().max(200).nullable().default(null),
         color: z.enum(STAGE_COLORS),
         hidden: z.boolean(),
         actions: z.object({

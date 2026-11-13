@@ -48,6 +48,8 @@ export interface StageSetting {
   /** Built-in id, or "c_…" for a stage the business added. */
   id: string;
   label: string | null;
+  /** What the stage means; null shows the built-in default (if any). */
+  description: string | null;
   color: StageColor;
   hidden: boolean;
   actions: StageActions;

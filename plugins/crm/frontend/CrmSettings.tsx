@@ -90,6 +90,7 @@ export default function CrmSettings() {
     const stage: StageSetting = {
       id: newStageId(),
       label: "",
+      description: null,
       color,
       hidden: false,
       actions: { make_customer: false, follow_up_days: null, create_project: false },
@@ -333,8 +334,17 @@ function StageRow({
         placeholder={defaultName}
         aria-label={`${t("crm.settings_stage_name")}: ${name}`}
         aria-invalid={custom && !stage.label?.trim()}
-        className="min-w-0 flex-1 sm:max-w-xs"
+        className="w-40 min-w-0 sm:w-48"
         onChange={(e) => onChange({ label: e.target.value || (custom ? "" : null) })}
+      />
+      <Input
+        value={stage.description ?? ""}
+        maxLength={200}
+        // Built-in stages show their default meaning until it's replaced.
+        placeholder={custom ? t("crm.settings_stage_description") : t(`crm.stage_desc_${stage.id}`)}
+        aria-label={`${t("crm.settings_stage_description")}: ${name}`}
+        className="min-w-0 flex-1 basis-48"
+        onChange={(e) => onChange({ description: e.target.value || null })}
       />
       <span className="text-xs text-muted-foreground tabular-nums">
         {t("crm.settings_stage_leads", { count: String(leads) })}

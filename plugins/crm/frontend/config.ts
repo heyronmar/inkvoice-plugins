@@ -24,7 +24,14 @@ export const DEFAULT_CONFIG: CrmConfig = {
       ["won", "emerald"],
       ["lost", "slate"],
     ] as const
-  ).map(([id, color]) => ({ id, label: null, color, hidden: false, actions: noActions() })),
+  ).map(([id, color]) => ({
+    id,
+    label: null,
+    description: null,
+    color,
+    hidden: false,
+    actions: noActions(),
+  })),
   sources: [...LEAD_SOURCES],
   triggers: { quote_created: "quoted", quote_accepted: "won" },
 };
@@ -175,7 +182,11 @@ export function useLeadLabels(config: CrmConfig) {
   const stageLabel = (id: string) =>
     config.stages.find((s) => s.id === id)?.label ||
     (["new", "contacted", "quoted", "won", "lost"].includes(id) ? t(`crm.stage_${id}`) : id);
+  /** The stage's own description, else the built-in default, else null. */
+  const stageDescription = (id: string): string | null =>
+    config.stages.find((s) => s.id === id)?.description ||
+    (["new", "contacted", "quoted", "won", "lost"].includes(id) ? t(`crm.stage_desc_${id}`) : null);
   const sourceLabel = (source: string) =>
     (LEAD_SOURCES as readonly string[]).includes(source) ? t(`crm.source_${source}`) : source;
-  return { stageLabel, sourceLabel };
+  return { stageLabel, stageDescription, sourceLabel };
 }

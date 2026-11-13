@@ -94,6 +94,8 @@ export interface StageSetting {
   id: string;
   /** Custom name; null shows the translated default (built-in stages only). */
   label: string | null;
+  /** What the stage means, shown under the stage on a lead's page; null shows the default. */
+  description: string | null;
   color: StageColor;
   hidden: boolean;
   actions: StageActions;
@@ -146,6 +148,7 @@ export function defaultCrmConfig(): CrmConfig {
     stages: [...DEFAULT_OPEN_STAGES, ...CLOSED_STAGES].map((id) => ({
       id,
       label: null,
+      description: null,
       color: DEFAULT_COLORS[id],
       hidden: false,
       actions: noActions(),
@@ -237,6 +240,8 @@ export function normalise(input: Partial<CrmConfig> & LegacyConfig): CrmConfig {
       id,
       // A stage the business added has no translated default, so it keeps a name.
       label: label || (CUSTOM_ID.test(id) ? "Stage" : null),
+      description:
+        typeof s?.description === "string" ? s.description.trim().slice(0, 200) || null : null,
       color: STAGE_COLORS.includes(s?.color as StageColor)
         ? (s?.color as StageColor)
         : (DEFAULT_COLORS[id] ?? "slate"),

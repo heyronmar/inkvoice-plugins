@@ -93,6 +93,7 @@ export function LeadFields({
   stages,
   fields,
   className,
+  hideLabels = false,
 }: {
   form: LeadForm;
   onChange: (form: LeadForm) => void;
@@ -101,6 +102,8 @@ export function LeadFields({
   stages: string[];
   fields: LeadField[];
   className?: string;
+  /** When the card's title already names the field; labels stay for screen readers. */
+  hideLabels?: boolean;
 }) {
   const { t } = useTranslation();
   const { stageLabel, sourceLabel } = useLeadLabels(config);
@@ -114,7 +117,9 @@ export function LeadFields({
 
   const text = (key: LeadField, label: string, type = "text") => (
     <div className="space-y-1">
-      <Label htmlFor={`lead-${key}`}>{label}</Label>
+      <Label htmlFor={`lead-${key}`} className={cn(hideLabels && "sr-only")}>
+        {label}
+      </Label>
       <Input
         id={`lead-${key}`}
         type={type}
@@ -186,7 +191,7 @@ export function LeadFields({
       {show("value") && text("value", t("crm.field_value"), "number")}
       {show("stage") && (
         <div className="space-y-1">
-          <Label>{t("crm.field_stage")}</Label>
+          <Label className={cn(hideLabels && "sr-only")}>{t("crm.field_stage")}</Label>
           <Select value={form.stage} onValueChange={(v) => v && set("stage")(v)}>
             <SelectTrigger className="w-full">
               <SelectValue>{stageLabel(form.stage)}</SelectValue>
@@ -204,7 +209,9 @@ export function LeadFields({
       {show("next_follow_up") && text("next_follow_up", t("crm.field_follow_up"), "date")}
       {show("notes") && (
         <div className="space-y-1 sm:col-span-2">
-          <Label htmlFor="lead-notes">{t("crm.field_notes")}</Label>
+          <Label htmlFor="lead-notes" className={cn(hideLabels && "sr-only")}>
+            {t("crm.field_notes")}
+          </Label>
           <Textarea
             id="lead-notes"
             rows={4}

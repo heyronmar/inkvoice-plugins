@@ -1,7 +1,8 @@
 // A lead's own page (/crm/leads/:id), opened by clicking a lead on the CRM
 // list or board. Laid out for richer lead data to come:
 //  - header: who it is, its stage, and what to do next (quote, customer…)
-//  - each card edits its own fields in place (✏️), with the dialog's fields
+//  - the page is one open form (the dialog's fields, card by card) with a
+//    single Save at the top; only changed fields are sent
 //  - main column: details, notes, activity history
 //  - side column: pipeline position, next follow-up, linked records
 // New sections slot into one of the two columns as their own components.
@@ -15,6 +16,7 @@ import {
   FileText,
   Pencil,
   Plus,
+  Save,
   Trash2,
   UserCheck,
   UserPlus,
@@ -38,13 +40,27 @@ import {
 import { Hint, TooltipProvider } from "@/components/ui/tooltip";
 import { useCan } from "@/hooks/use-can";
 import { useTranslation } from "@/i18n";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/settings.store";
-import { type Activity, type CrmConfig, crmApi, isClosed, type Lead, type LeadInput } from "./api";
+import { type Activity, type CrmConfig, crmApi, isClosed, type Lead } from "./api";
 import { stageStyle, useCrmConfig, useLeadLabels } from "./config";
 
 import { formToInput, type LeadField, LeadFields, type LeadForm, leadToForm } from "./LeadFields";
 import { LeadTypeIcon } from "./LeadTypeIcon";
+
+/** Fields the page edits; the rest of a lead is set by the app. */
+const EDITABLE: LeadField[] = [
+  "lead_type",
+  "name",
+  "company",
+  "email",
+  "phone",
+  "source",
+  "value",
+  "stage",
+  "next_follow_up",
+  "notes",
+];
 
 function localToday(): string {
   const d = new Date();
@@ -63,12 +79,19 @@ export default function LeadPage() {
   const settings = useSettingsStore((s) => s.settings);
   const currency = settings.base_currency || settings.currency || "USD";
   const { config } = useCrmConfig();
-  const { stageLabel, sourceLabel } = useLeadLabels(config);
+  const { stageLabel, stageDescription, sourceLabel } = useLeadLabels(config);
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [missing, setMissing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The page is one open form: every card shows its fields, one Save at the top.
+  const [form, setForm] = useState<LeadForm | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (lead) setForm(leadToForm(lead, lead.stage));
+  }, [lead]);
 
   const load = useCallback(async () => {
     try {
@@ -112,14 +135,34 @@ export default function LeadPage() {
   // Stages to pick from: the visible ones, plus the lead's own if it's hidden.
   const stages = config.stages.filter((s) => !s.hidden || s.id === lead.stage).map((s) => s.id);
 
-  // What every editable card needs: each one saves only its own fields.
-  const edit = {
-    lead,
-    config,
-    stages,
-    editable: canEdit,
-    onSave: (input: LeadInput) => run(() => crmApi.update(lead.id, input), t("crm.saved")),
+  // Only changed fields are sent, so e.g. an untouched stage doesn't re-run
+  // its automations.
+  const saved = leadToForm(lead, lead.stage);
+  const changed = form ? EDITABLE.filter((f) => form[f] !== saved[f]) : [];
+  const dirty = changed.length > 0;
+  const editing = canEdit && form !== null;
+  const save = async () => {
+    if (!form || !dirty) return;
+    setSaving(true);
+    await run(() => crmApi.update(lead.id, formToInput(form, changed)), t("crm.saved"));
+    setSaving(false);
   };
+  /** A card's fields while editing, or its read-only view otherwise. */
+  const fieldsOr = (fields: LeadField[], view: ReactNode, editable = true) =>
+    editing && editable && form ? (
+      <LeadFields
+        form={form}
+        onChange={setForm}
+        config={config}
+        lead={lead}
+        stages={stages}
+        fields={fields}
+        className={fields.length === 1 ? "sm:grid-cols-1" : undefined}
+        hideLabels={fields.length === 1}
+      />
+    ) : (
+      view
+    );
 
   const createQuote = async () => {
     try {
@@ -180,6 +223,19 @@ export default function LeadPage() {
                 </Button>
               )
             )}
+            {editing && (
+              <>
+                {dirty && (
+                  <Button variant="ghost" onClick={() => setForm(saved)} disabled={saving}>
+                    {t("crm.discard")}
+                  </Button>
+                )}
+                <Button onClick={save} disabled={!dirty || saving || !form?.name.trim()}>
+                  <Save className="h-4 w-4" />
+                  {saving ? t("common.saving") : t("common.save")}
+                </Button>
+              </>
+            )}
             {canDelete && (
               <Hint label={t("common.delete")}>
                 <Button
@@ -198,57 +254,61 @@ export default function LeadPage() {
         <div className="grid gap-4 lg:grid-cols-3">
           {/* Main column */}
           <div className="space-y-4 lg:col-span-2">
-            <EditableSection
-              {...edit}
+            <Section
               title={t("crm.section_details")}
               hint={lead.customer_id ? t("crm.shared_with_customer") : undefined}
-              fields={["lead_type", "name", "company", "email", "phone", "source", "value"]}
             >
-              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-                <Field label={t("customers.type")}>
-                  {t(
-                    lead.lead_type === "individual"
-                      ? "customers.type_individual"
-                      : "customers.type_company",
+              {fieldsOr(
+                ["lead_type", "name", "company", "email", "phone", "source", "value"],
+                <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                  <Field label={t("customers.type")}>
+                    {t(
+                      lead.lead_type === "individual"
+                        ? "customers.type_individual"
+                        : "customers.type_company",
+                    )}
+                  </Field>
+                  <Field label={t("crm.field_name")}>{lead.name}</Field>
+                  {lead.lead_type !== "individual" && (
+                    <Field label={t("crm.field_company")}>{lead.company}</Field>
                   )}
-                </Field>
-                <Field label={t("crm.field_name")}>{lead.name}</Field>
-                {lead.lead_type !== "individual" && (
-                  <Field label={t("crm.field_company")}>{lead.company}</Field>
-                )}
-                <Field label={t("crm.field_email")}>
-                  {lead.email && (
-                    <a className="text-primary hover:underline" href={`mailto:${lead.email}`}>
-                      {lead.email}
-                    </a>
-                  )}
-                </Field>
-                <Field label={t("crm.field_phone")}>
-                  {lead.phone && (
-                    <a className="text-primary hover:underline" href={`tel:${lead.phone}`}>
-                      {lead.phone}
-                    </a>
-                  )}
-                </Field>
-                <Field label={t("crm.field_source")}>
-                  {lead.source && sourceLabel(lead.source)}
-                </Field>
-                <Field label={t("crm.field_value")}>
-                  {lead.value != null && formatCurrency(lead.value, currency)}
-                </Field>
-                <Field label={t("crm.field_added")}>
-                  {formatDate(lead.created_at.slice(0, 10))}
-                </Field>
-              </dl>
-            </EditableSection>
-
-            <EditableSection {...edit} title={t("crm.field_notes")} fields={["notes"]}>
-              {lead.notes ? (
-                <p className="whitespace-pre-wrap text-sm">{lead.notes}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("crm.no_notes")}</p>
+                  <Field label={t("crm.field_email")}>
+                    {lead.email && (
+                      <a className="text-primary hover:underline" href={`mailto:${lead.email}`}>
+                        {lead.email}
+                      </a>
+                    )}
+                  </Field>
+                  <Field label={t("crm.field_phone")}>
+                    {lead.phone && (
+                      <a className="text-primary hover:underline" href={`tel:${lead.phone}`}>
+                        {lead.phone}
+                      </a>
+                    )}
+                  </Field>
+                  <Field label={t("crm.field_source")}>
+                    {lead.source && sourceLabel(lead.source)}
+                  </Field>
+                  <Field label={t("crm.field_value")}>
+                    {lead.value != null && formatCurrency(lead.value, currency)}
+                  </Field>
+                  <Field label={t("crm.field_added")}>
+                    {formatDate(lead.created_at.slice(0, 10))}
+                  </Field>
+                </dl>,
               )}
-            </EditableSection>
+            </Section>
+
+            <Section title={t("crm.field_notes")}>
+              {fieldsOr(
+                ["notes"],
+                lead.notes ? (
+                  <p className="whitespace-pre-wrap text-sm">{lead.notes}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t("crm.no_notes")}</p>
+                ),
+              )}
+            </Section>
 
             <Section title={t("crm.section_activity")}>
               <ActivityTimeline items={activity} lead={lead} config={config} />
@@ -257,45 +317,30 @@ export default function LeadPage() {
 
           {/* Side column */}
           <div className="space-y-4">
-            <EditableSection {...edit} title={t("crm.section_pipeline")} fields={["stage"]}>
-              <ol className="space-y-1.5">
-                {stages.map((s, i) => {
-                  const at = stages.indexOf(lead.stage);
-                  const state = s === lead.stage ? "current" : i < at && !closed ? "done" : "todo";
-                  return (
-                    <li key={s} className="flex items-center gap-2 text-sm">
-                      <span
-                        className={cn(
-                          "h-2 w-2 shrink-0 rounded-full",
-                          state === "current" && "bg-primary ring-4 ring-primary/15",
-                          state === "done" && "bg-primary/50",
-                          state === "todo" && "bg-muted-foreground/25",
-                        )}
-                      />
-                      <span
-                        className={cn(
-                          state === "current" ? "font-medium" : "text-muted-foreground",
-                        )}
-                      >
-                        {stageLabel(s)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-            </EditableSection>
+            <Section title={t("crm.section_pipeline")}>
+              {fieldsOr(
+                ["stage"],
+                <Badge className={stageStyle(config, lead.stage)}>{stageLabel(lead.stage)}</Badge>,
+              )}
+              {/* What the chosen stage means; follows the dropdown as it changes. */}
+              {stageDescription(form?.stage ?? lead.stage) && (
+                <p className="text-xs text-muted-foreground">
+                  {stageDescription(form?.stage ?? lead.stage)}
+                </p>
+              )}
+            </Section>
 
-            <EditableSection
-              {...edit}
-              editable={canEdit && !closed}
-              title={t("crm.field_follow_up")}
-              fields={["next_follow_up"]}
-            >
-              <p className="text-sm">
-                {lead.next_follow_up ? formatDate(lead.next_follow_up) : t("crm.none")}
-              </p>
+            <Section title={t("crm.field_follow_up")}>
+              {fieldsOr(
+                ["next_follow_up"],
+                <p className="text-sm">
+                  {lead.next_follow_up ? formatDate(lead.next_follow_up) : t("crm.none")}
+                </p>,
+                // A won or lost lead has nothing to follow up.
+                !closed,
+              )}
               {overdue && <p className="text-xs text-destructive">{t("crm.follow_up_overdue")}</p>}
-            </EditableSection>
+            </Section>
 
             <Section title={t("crm.section_linked")}>
               <LinkRow
@@ -395,87 +440,6 @@ function Section({
       </CardHeader>
       <CardContent className="space-y-3">{children}</CardContent>
     </Card>
-  );
-}
-
-/**
- * A card with its own ✏️: editing swaps the view for the lead form's fields
- * (LeadFields, the same ones as the dialog) and saves only those fields.
- */
-function EditableSection({
-  title,
-  hint,
-  fields,
-  lead,
-  config,
-  stages,
-  editable,
-  onSave,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  fields: LeadField[];
-  lead: Lead;
-  config: CrmConfig;
-  stages: string[];
-  editable: boolean;
-  onSave: (input: LeadInput) => Promise<boolean>;
-  children: ReactNode;
-}) {
-  const { t } = useTranslation();
-  const [form, setForm] = useState<LeadForm | null>(null);
-  const [saving, setSaving] = useState(false);
-  const save = async () => {
-    if (!form) return;
-    setSaving(true);
-    if (await onSave(formToInput(form, fields))) setForm(null);
-    setSaving(false);
-  };
-  const invalid = !!form && fields.includes("name") && !form.name.trim();
-  return (
-    <Section
-      title={title}
-      hint={hint}
-      action={
-        editable && !form ? (
-          <Hint label={t("common.edit")}>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`${t("common.edit")}: ${title}`}
-              onClick={() => setForm(leadToForm(lead, lead.stage))}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-          </Hint>
-        ) : undefined
-      }
-    >
-      {form ? (
-        <div className="space-y-3">
-          <LeadFields
-            form={form}
-            onChange={setForm}
-            config={config}
-            lead={lead}
-            stages={stages}
-            fields={fields}
-            className={fields.length === 1 ? "sm:grid-cols-1" : undefined}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setForm(null)} disabled={saving}>
-              {t("common.cancel")}
-            </Button>
-            <Button onClick={save} disabled={saving || invalid}>
-              {saving ? t("common.saving") : t("common.save")}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        children
-      )}
-    </Section>
   );
 }
 
