@@ -98,6 +98,38 @@ describe("leads service", () => {
     expect(convertLead(lead.id)!.customer_id).toBe(first.customer_id);
   });
 
+  test("a new lead for an existing customer takes its details; quotes from then link", async () => {
+    const first = createLead({ name: "Moana", company: "Kauri Builders", email: "moana@kauri.nz" });
+    const { customer_id } = convertLead(first.id)!;
+
+    // A second job for the same customer: a new lead, no new customer.
+    const again = createLead({ name: "Moana", customer_id, value: 9000 });
+    expect(again).toMatchObject({
+      customer_id,
+      company: "Kauri Builders",
+      email: "moana@kauri.nz",
+      lead_type: "company",
+    });
+    expect(listActivity(again.id).map((a) => a.kind)).toContain("customer_linked");
+    const quote = quoteFor(customer_id);
+    listLeads();
+    expect(getLead(again.id)!.quote_id).toBe(quote.id);
+
+    setPluginEnabled("crm", true);
+    const missing = await call("/leads", {
+      method: "POST",
+      body: JSON.stringify({ name: "X", customer_id: "nope" }),
+    });
+    expect(missing.status).toBe(400);
+  });
+
+  test("converting reuses a customer with the same email", () => {
+    const a = createLead({ name: "Hone", email: "Hone@Example.nz" });
+    const first = convertLead(a.id)!.customer_id;
+    const b = createLead({ name: "Hone Parata", email: "hone@example.nz" });
+    expect(convertLead(b.id)!.customer_id).toBe(first);
+  });
+
   test("a converted lead shares its details with the customer, both ways", () => {
     const lead = createLead({ name: "Mere", company: "Rata Design", email: "mere@rata.nz" });
     const { customer_id } = convertLead(lead.id)!;

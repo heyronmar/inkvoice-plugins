@@ -486,6 +486,7 @@ const ACTIVITY_ICONS: Record<Activity["kind"], typeof Plus> = {
   stage_changed: ArrowRight,
   follow_up_set: CalendarClock,
   converted: UserCheck,
+  customer_linked: UserCheck,
   quote_linked: FileText,
   project_created: Clock,
 };
@@ -527,6 +528,8 @@ function ActivityTimeline({
         return t("crm.activity_follow_up", { date: d.date ? formatDate(d.date) : "" });
       case "converted":
         return t("crm.activity_converted", { name: d.name ?? "" });
+      case "customer_linked":
+        return t("crm.activity_linked", { name: d.name ?? "" });
       case "quote_linked":
         return d.quote_id === lead.quote_id && lead.quote_number
           ? t("crm.activity_quote", { number: lead.quote_number })

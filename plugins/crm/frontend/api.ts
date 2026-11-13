@@ -94,6 +94,7 @@ export interface Activity {
     | "stage_changed"
     | "follow_up_set"
     | "converted"
+    | "customer_linked"
     | "quote_linked"
     | "project_created";
   data: {
@@ -119,6 +120,7 @@ export type LeadInput = Partial<
     Lead,
     | "name"
     | "lead_type"
+    | "customer_id"
     | "company"
     | "email"
     | "phone"

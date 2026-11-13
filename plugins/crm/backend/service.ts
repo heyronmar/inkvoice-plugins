@@ -59,6 +59,8 @@ export type LeadType = "company" | "individual";
 
 export interface LeadInput {
   name: string;
+  /** An existing customer this lead is for (new leads only); its details fill the lead's. */
+  customer_id?: string | null;
   lead_type?: LeadType;
   company?: string | null;
   email?: string | null;
@@ -92,6 +94,7 @@ export type ActivityKind =
   | "stage_changed"
   | "follow_up_set"
   | "converted"
+  | "customer_linked"
   | "quote_linked"
   | "project_created";
 
@@ -321,8 +324,11 @@ export function syncLeads(ctx: Context = {}): void {
   const db = getDb();
   const rows = db
     .query(
+      // A customer with several open leads: the most recent claims a new
+      // quote first (Create quote on a lead makes it the most recent).
       `SELECT id, stage, customer_id, converted_at, quote_id, events_seen
-         FROM crm_leads WHERE customer_id IS NOT NULL`,
+         FROM crm_leads WHERE customer_id IS NOT NULL
+        ORDER BY converted_at DESC, rowid DESC`,
     )
     .all() as SyncRow[];
 
@@ -504,6 +510,7 @@ export function createLead(input: LeadInput, ctx: Context = {}): Lead {
     [id, ...FIELDS.map((f) => (f === "stage" ? stage : clean(input[f])))],
   );
   logActivity(id, "created", { stage }, ctx.userId);
+  if (input.customer_id) linkCustomer(id, input.customer_id, ctx);
   arrive(id, stage, ctx, Boolean(clean(input.next_follow_up)));
   return getLead(id)!;
 }
@@ -571,8 +578,36 @@ export function deleteLead(id: string): boolean {
 }
 
 /**
- * Make the lead a customer (or reuse the one it already became). The customer
- * is named after the company when there is one, otherwise the person.
+ * Tie a lead to a customer that already exists: a returning customer's new
+ * deal. Its shared details (name, company, email, phone, type) come from the
+ * customer from then on, and quotes made from now on can link to the lead.
+ */
+function linkCustomer(id: string, customerId: string, ctx: Context): boolean {
+  const customer = getCustomer(customerId);
+  if (!customer) return false;
+  getDb().run(
+    `UPDATE crm_leads SET customer_id = ?, converted_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?`,
+    [customer.id, id],
+  );
+  pullFromCustomers(id);
+  logActivity(id, "customer_linked", { customer_id: customer.id, name: customer.name }, ctx.userId);
+  return true;
+}
+
+/** A customer already using this email address, so converting doesn't duplicate them. */
+function customerByEmail(email: string | null): string | null {
+  if (!email?.trim()) return null;
+  const row = getDb()
+    .query("SELECT id FROM customers WHERE lower(email) = lower(?) ORDER BY created_at LIMIT 1")
+    .get(email.trim()) as { id: string } | null;
+  return row?.id ?? null;
+}
+
+/**
+ * Make the lead a customer (or reuse the one it already became). A customer
+ * with the same email is reused rather than duplicated. A new customer is
+ * named after the company for a company, the person for an individual.
  */
 export function convertLead(
   id: string,
@@ -582,6 +617,10 @@ export function convertLead(
   if (!lead) return null;
   if (lead.customer_id && getCustomer(lead.customer_id)) {
     return { lead, customer_id: lead.customer_id };
+  }
+  const existing = customerByEmail(lead.email);
+  if (existing && linkCustomer(id, existing, ctx)) {
+    return { lead: getLead(id)!, customer_id: existing };
   }
   const contact = lead.company ? `Contact: ${lead.name}` : "";
   const customer = createCustomer({
@@ -608,5 +647,11 @@ export function startQuote(
   id: string,
   ctx: Context = {},
 ): { lead: Lead; customer_id: string } | null {
-  return convertLead(id, ctx);
+  const converted = convertLead(id, ctx);
+  // The quote about to be made is for this lead: make it the customer's most
+  // recent, so it claims the quote over the customer's other open leads.
+  if (converted && !converted.lead.quote_id) {
+    getDb().run("UPDATE crm_leads SET converted_at = datetime('now') WHERE id = ?", [id]);
+  }
+  return converted;
 }

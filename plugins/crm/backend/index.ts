@@ -5,6 +5,7 @@
 
 import { requirePermission } from "@inkvoice/backend/middleware/auth";
 import { registerBackendPlugin } from "@inkvoice/backend/plugins/registry";
+import { getCustomer } from "@inkvoice/backend/services/customer.service";
 import { buildCsv, csvHeaders } from "@inkvoice/backend/utils/csv";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -35,6 +36,8 @@ const isoDate = z
 const leadSchema = z.object({
   name: z.string().trim().min(1).max(255),
   lead_type: z.enum(["company", "individual"]).optional(),
+  // An existing customer (new leads only, see the POST handler).
+  customer_id: z.string().max(64).nullable().optional(),
   company: optionalText(255),
   email: z.string().email().nullable().optional().or(z.literal("")),
   phone: optionalText(50),
@@ -175,6 +178,9 @@ routes.post("/leads", requirePermission("customers", "create"), async (c) => {
   if (!parsed.success || unknownStage(parsed.data.stage)) {
     return c.json({ success: false, error: "Invalid lead" }, 400);
   }
+  if (parsed.data.customer_id && !getCustomer(parsed.data.customer_id)) {
+    return c.json({ success: false, error: "Customer not found" }, 400);
+  }
   return c.json(ok(svc.createLead(parsed.data as svc.LeadInput, ctxFrom(c, body?.today))), 201);
 });
 
@@ -184,9 +190,11 @@ routes.put("/leads/:id", requirePermission("customers", "update"), async (c) => 
   if (!parsed.success || unknownStage(parsed.data.stage)) {
     return c.json({ success: false, error: "Invalid lead" }, 400);
   }
+  // A lead's customer is set when it's added or converted, not by editing.
+  const { customer_id: _ignored, ...changes } = parsed.data;
   const updated = svc.updateLead(
     c.req.param("id"),
-    parsed.data as Partial<svc.LeadInput>,
+    changes as Partial<svc.LeadInput>,
     ctxFrom(c, body?.today),
   );
   if (!updated) return c.json({ success: false, error: "Lead not found" }, 404);

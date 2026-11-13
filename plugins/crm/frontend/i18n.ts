@@ -87,6 +87,12 @@ registerTranslations("en", {
     shared_with_customer:
       "Name, company, email, phone and type are shared with the customer: changes here update it everywhere, and changes to the customer show here.",
     edit_customer: "Edit customer",
+    field_customer: "Customer",
+    customer_new_hint:
+      "Leave empty for someone new. Pick a customer for a returning one's new job.",
+    customer_details_from: "Contact details come from {{name}}.",
+    customer_new_instead: "Someone new instead",
+    activity_linked: "Linked to customer: {{name}}",
     discard: "Discard changes",
     lead_not_found: "This lead doesn't exist any more.",
     section_details: "Details",
@@ -243,6 +249,11 @@ registerTranslations("tr", {
     shared_with_customer:
       "Ad, şirket, e-posta, telefon ve tür müşteriyle ortaktır: buradaki değişiklikler her yerde güncellenir, müşterideki değişiklikler burada görünür.",
     edit_customer: "Müşteriyi düzenle",
+    field_customer: "Müşteri",
+    customer_new_hint: "Yeni biri için boş bırakın. Mevcut bir müşterinin yeni işi için seçin.",
+    customer_details_from: "İletişim bilgileri {{name}} kaydından gelir.",
+    customer_new_instead: "Bunun yerine yeni biri",
+    activity_linked: "Müşteriye bağlandı: {{name}}",
     discard: "Değişiklikleri at",
     lead_not_found: "Bu kayıt artık yok.",
     section_details: "Bilgiler",
